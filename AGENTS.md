@@ -23,6 +23,8 @@
 - `origin`: `sangguk-kwon/CodePetMODnMOBILE`, `upstream`: `nokryong/CodePet`.
 - `main`은 원본 추적용, `develop`은 개조판 통합과 이 문서들의 기준 브랜치다.
 - 기능은 `feat/*`, 수정은 `fix/*`, 문서는 `docs/*`에서 작업하고 PR은 `develop`을 대상으로 한다.
+- 원본 저장소 `nokryong/CodePet`은 읽기 전용이다. PR·이슈·댓글·푸시를 만들지 않는다. 이 Fork의 작업은 Fork 안에서만 한다.
+- PR은 항상 `gh pr create --repo sangguk-kwon/CodePetMODnMOBILE --base develop`으로 만들고, 생성 후 대상 저장소를 확인한다. GitHub 화면의 PR 버튼은 대상이 원본으로 잡힐 수 있으니 저장소를 먼저 확인한다.
 - 계획 문서를 원본 유지 브랜치에 덮어쓰거나 원본 변경과 개인 기능을 강제 푸시로 맞추지 않는다.
 - upstream 변경은 별도 병합 브랜치에서 검증하고 `develop`에 반영한다.
 - 기존 릴리스 워크플로는 `main` 푸시·`v*` 태그로 동작한다. 개조판 배포 경로를 검증하기 전에는 이를 릴리스 수단으로 사용하지 않는다.

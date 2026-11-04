@@ -949,6 +949,11 @@ function openAgentPopover(anchor, agentId) {
     });
     root.append(makeField("추론", effortSelect));
 
+    const appliesNextTurn = document.createElement("p");
+    appliesNextTurn.className = "popover-hint";
+    appliesNextTurn.textContent = "변경은 다음 턴부터 적용됩니다. 진행 중인 응답은 기존 설정을 유지합니다.";
+    root.append(appliesNextTurn);
+
     const autoApproveToggle = document.createElement("input");
     autoApproveToggle.type = "checkbox";
     autoApproveToggle.checked = Boolean(config.autoApprove);
@@ -1383,8 +1388,8 @@ function renderMessageLabel(nameEl, message, live = false) {
   const saved = message.agentMeta || {};
   const parts = [agent?.name || saved.name || message.author,
     `@${agentMention(agent) || saved.mention || message.author}`,
-    modelLabel(saved.model || agent?.model),
-    effortLabel(saved.effort || agent?.effort || "추론 강도 확인 불가")];
+    modelLabel(saved.appliedModel || saved.model || agent?.model),
+    effortLabel(saved.appliedEffort || saved.effort || agent?.effort || "추론 강도 확인 불가")];
   if (live) parts.push("응답 중");
   nameEl.textContent = parts.join(" · ");
 }

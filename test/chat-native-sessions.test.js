@@ -81,7 +81,7 @@ test("deleted chats cannot be recreated by late session callbacks; corrupt curso
 async function setup(t, providerId, behavior) {
   const store = temporaryStore(t), calls = [];
   const record = { id: providerId, name: providerId, status: "cli", aliases: [providerId], commandPath: "fixture",
-    catalogStatus: "ready", modelOptions: [{ id: "fixture" }], permissions: { chat: { supported: true } } };
+    catalogStatus: "ready", modelOptions: ["fixture", "fixture-next"].map(id => ({ id, efforts: ["low", "high"] })), permissions: { chat: { supported: true } } };
   t.mock.method(capabilities, "createCapabilityService", () => ({ defs: [record], getRecord: () => record, discover: async () => [record] }));
   t.mock.method(runner, "runAgentProcess", input => {
     calls.push(input);
@@ -120,7 +120,7 @@ async function setup(t, providerId, behavior) {
     }
     assert.fail("Response did not finish");
   };
-  return { store, calls, invoke, send, restart, sessionId };
+  return { store, calls, invoke, send, restart, sessionId, env: options.env };
 }
 
 test("partial failure resumes without replaying the previously consumed user input", async t => {
@@ -180,4 +180,86 @@ test("a missing native session fails visibly without silently starting a replace
   assert.match(answer.text, /No conversation found/);
   assert.equal(calls.length, 2);
   assert.ok(calls[1].argv.includes("--resume"));
+});
+
+for (const providerId of ["claude", "codex"]) test(`${providerId}: model/effort changes retain the native cursor across restart`, async t => {
+  const { store, calls, invoke, send, restart, sessionId } = await setup(t, providerId, ({ input }) => {
+    if (providerId === "claude") {
+      input.parseLine(JSON.stringify({ type: "system", subtype: "init", model: "claude-init" }));
+      input.parseLine(JSON.stringify({ type: "assistant", message: { model: "claude-confirmed", content: [] } }));
+      input.parseLine(JSON.stringify({ type: "result", modelUsage: { "old-cumulative-model": {} } }));
+    }
+  });
+  const configure = async patch => {
+    const result = await invoke("chat:agent:configure", { sessionId, agentId: providerId, patch });
+    assert.ok(!result.error, JSON.stringify(result));
+  };
+  const linkFile = path.join(store.sessionDir(sessionId), "native-sessions.json");
+  await configure({ model: "fixture", effort: "low" });
+  const first = await send("remember-marker");
+  const id = JSON.parse(fs.readFileSync(linkFile))[providerId].cliSessionId;
+  assert.equal(first.agentMeta.model, "fixture");
+  assert.equal(first.agentMeta.effort, "low");
+  assert.equal(first.agentMeta.appliedModel, providerId === "claude" ? "claude-confirmed" : undefined);
+  assert.equal(first.agentMeta.appliedEffort, undefined);
+  await configure({ model: "fixture-next", effort: "high" });
+  restart();
+  const second = await send("continue-marker");
+  assert.equal(JSON.parse(fs.readFileSync(linkFile))[providerId].cliSessionId, id);
+  assert.ok(calls[1].argv.includes(id));
+  assert.ok(calls[1].argv.includes("fixture-next"));
+  assert.ok(calls[1].argv.includes(providerId === "claude" ? "high" : "model_reasoning_effort=high"));
+  assert.doesNotMatch(calls[1].prompt, /remember-marker/);
+  assert.equal(second.agentMeta.model, "fixture-next");
+  assert.equal(second.agentMeta.effort, "high");
+});
+
+for (const providerId of ["claude", "codex"]) test(`${providerId}: legacy default hash migrates, unknown hash falls back to budgeted history`, async t => {
+  const { store, calls, invoke, send, sessionId, env } = await setup(t, providerId);
+  await send("first-marker");
+  const file = path.join(store.sessionDir(sessionId), "native-sessions.json");
+  const index = JSON.parse(fs.readFileSync(file));
+  const original = index[providerId].cliSessionId;
+  const home = providerId === "codex" ? calls[0].env.CODEX_HOME : env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  const scope = { providerId, profileKey: null, activeKey: null, home, cwd: calls[0].cwd, permissionMode: "chat", autoApprove: false,
+    model: "default", effort: "default" };
+  const { createHash } = require("node:crypto");
+  const oldScopeHash = createHash("sha256").update(JSON.stringify(scope)).digest("hex");
+  index[providerId].scope = oldScopeHash;
+  fs.writeFileSync(file, JSON.stringify(index));
+  await invoke("chat:agent:configure", { sessionId, agentId: providerId, patch: { model: "fixture", effort: "high" } });
+  await send("second-marker");
+  // The fixture's account identity is deterministic; a matching default candidate resumes.
+  assert.ok(calls[1].argv.includes(original));
+  const unknown = JSON.parse(fs.readFileSync(file));
+  unknown[providerId].scope = "unrecoverable-legacy-hash";
+  fs.writeFileSync(file, JSON.stringify(unknown));
+  for (let i = 0; i < 110; i++) store.appendEvent(sessionId, { kind: "message", message: {
+    id: `fallback-${i}`, text: `history-${i}`, authorType: "user", author: "user",
+  } });
+  await send("third-marker");
+  assert.ok(!calls[2].argv.includes(original));
+  assert.match(calls[2].prompt, /first-marker/);
+  assert.match(calls[2].prompt, /fixture-own-answer/);
+  assert.match(calls[2].prompt, /history-0\n/);
+  assert.match(calls[2].prompt, /history-109\n/);
+});
+
+test("scope recovery warns the CLI when older conversation exceeds the byte budget", async t => {
+  const { store, calls, send, sessionId } = await setup(t, "claude");
+  await send("old-marker");
+  const file = path.join(store.sessionDir(sessionId), "native-sessions.json");
+  const index = JSON.parse(fs.readFileSync(file));
+  index.claude.scope = "unknown-legacy-hash";
+  fs.writeFileSync(file, JSON.stringify(index));
+  for (let i = 0; i < 10; i++) store.appendEvent(sessionId, { kind: "message", message: {
+    id: `large-${i}`, authorType: "user", author: "user", text: `large-marker-${i} ` + "한글".repeat(10000),
+  } });
+  await send("current-marker");
+  assert.match(calls[1].prompt, /current-marker/);
+  assert.match(calls[1].prompt, /large-marker-9/);
+  assert.doesNotMatch(calls[1].prompt, /old-marker|large-marker-0/);
+  assert.match(calls[1].prompt, /256KiB.*생략/);
+  // The budget is for messages; role instructions and the omission notice are additional.
+  assert.ok(Buffer.byteLength(calls[1].prompt) < 280 * 1024);
 });

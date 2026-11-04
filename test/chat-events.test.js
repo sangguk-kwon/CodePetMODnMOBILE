@@ -136,3 +136,26 @@ test("failed native session linking does not stop CLI output", () => {
   assert.doesNotThrow(() => parser(JSON.stringify({ type: "thread.started", thread_id: "11111111-2222-4333-8444-555555555555" })));
   assert.deepEqual(parser(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "done" } })), { kind: "final", text: "done" });
 });
+
+test("Claude applied model comes only from this turn's main init/assistant events", () => {
+  const models = [];
+  const parser = createLineParser("claude", null, null, (model, source) => models.push([model, source]));
+  for (const event of [
+    { type: "system", subtype: "init", model: "claude-init" },
+    { type: "assistant", message: { model: "claude-actual", content: [] } },
+    { type: "assistant", parent_tool_use_id: "child", message: { model: "child-model", content: [] } },
+    { type: "result", modelUsage: { "old-cumulative": {}, "new-cumulative": {} } },
+    { type: "system", subtype: "init", model: "invalid\nmodel" },
+  ]) parser(JSON.stringify(event));
+  assert.deepEqual(models, [["claude-init", "system"], ["claude-actual", "assistant"]]);
+  createLineParser("codex", null, null, model => models.push(model))(JSON.stringify({ type: "system", subtype: "init", model: "not-confirmed" }));
+  assert.equal(models.length, 2);
+});
+
+test("Codex model-change warning is ignored while real failures remain errors", () => {
+  const event = { type: "item.completed", item: { type: "error", message: "This session was recorded with model `old` but is resuming with `new`." } };
+  assert.equal(parseCodexLine(JSON.stringify(event)), null);
+  event.item.message = "Model unavailable";
+  assert.equal(parseCodexLine(JSON.stringify(event)).kind, "error");
+  assert.equal(parseCodexLine(JSON.stringify({ type: "turn.failed", error: { message: "This session was recorded with model but failed" } })).kind, "error");
+});

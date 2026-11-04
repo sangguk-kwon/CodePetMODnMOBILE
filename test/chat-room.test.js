@@ -32,6 +32,41 @@ async function settle(room) {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+test("turn choices survive preparation, live edits and approval retry; next turn takes the new choices", async () => {
+  let releasePreparation;
+  let prepareCount = 0;
+  const calls = [];
+  const room = new ChatRoom({ agents: makeAgents().map(agent => ({ ...agent, model: "old-model", effort: "low" })),
+    prepareAgent: () => ++prepareCount === 1 ? new Promise(resolve => { releasePreparation = resolve; }) : Promise.resolve(),
+    runAgent: ({ agent, autoApprove }) => {
+      calls.push({ model: agent.model, effort: agent.effort, autoApprove });
+      return { promise: Promise.resolve(calls.length === 1
+        ? { ok: false, approvalRequired: true, approval: { summary: "fixture" } }
+        : { ok: true, text: "done", appliedModel: "confirmed-model" }), cancel() {} };
+    },
+  });
+  room.once("approval-request", ({ approvalId }) => {
+    room.findAgent("codex").model = "newest-model";
+    room.resolveApproval(approvalId, "approve");
+  });
+  room.sendUserMessage("@codex first");
+  room.findAgent("codex").model = "new-model";
+  room.findAgent("codex").effort = "high";
+  releasePreparation();
+  await settle(room);
+  assert.deepEqual(calls, [
+    { model: "old-model", effort: "low", autoApprove: false },
+    { model: "old-model", effort: "low", autoApprove: true },
+  ]);
+  assert.equal(room.messages.at(-1).agentMeta.model, "old-model");
+  assert.equal(room.messages.at(-1).agentMeta.effort, "low");
+  assert.equal(room.messages.at(-1).agentMeta.appliedModel, "confirmed-model");
+  assert.equal(room.messages.at(-1).agentMeta.appliedEffort, undefined);
+  room.sendUserMessage("@codex next");
+  await settle(room);
+  assert.deepEqual(calls[2], { model: "newest-model", effort: "high", autoApprove: false });
+});
+
 test("custom mentions route handoffs by stable ID even if a participant is renamed during a run", async () => {
   const agents = makeAgents().map((agent, index) => ({ ...agent, name: index === 0 ? "검토 담당" : "작업 담당",
     mention: index === 0 ? "검토" : "작업", aliases: [index === 0 ? "검토" : "작업", ...agent.aliases] }));

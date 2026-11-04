@@ -6,6 +6,7 @@ const path = require("node:path");
 const { ChatStore } = require("../src/chat/chat-store");
 const { ChatRoom } = require("../src/chat/chat-room");
 const { createChatFeature } = require("../src/chat/chat-ipc");
+const { readRecoveryContext, RECOVERY_CONTEXT_BYTES } = require("../src/chat/chat-history");
 
 function fixture(t, count = 125) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "codepet-history-"));
@@ -19,6 +20,39 @@ function fixture(t, count = 125) {
     JSON.stringify({ kind: "message", message })).join("\n") + "\n");
   return { store, id: session.id, messages };
 }
+
+test("recovery selects a bounded recent suffix at the turn snapshot and reports omissions", t => {
+  const { store, id } = fixture(t, 0);
+  for (let i = 0; i < 20; i++) store.appendEvent(id, { kind: "message", message: {
+    id: `budget-${i}`, authorType: i % 2 ? "agent" : "user", author: i % 2 ? "claude" : "user",
+    text: `marker-${i} ` + "한글🚀".repeat(4000),
+  } });
+  store.appendEvent(id, { kind: "message", message: { id: "late", authorType: "agent", author: "codex", text: "late-marker" } });
+  const recovered = readRecoveryContext(store.transcriptPath(id), { throughId: "budget-19" });
+  assert.equal(recovered.truncated, true);
+  assert.equal(recovered.messages.at(-1).id, "budget-19");
+  assert.ok(recovered.messages.length < 20);
+  assert.ok(recovered.messages.some(message => message.author === "claude"));
+  assert.ok(recovered.messages.every(message => message.id !== "late"));
+  assert.ok(recovered.messages.reduce((size, message) => size + Buffer.byteLength(JSON.stringify(message)) + 1, 0) <= RECOVERY_CONTEXT_BYTES);
+  assert.equal(readRecoveryContext(store.transcriptPath(id), { throughId: "missing" }), null);
+});
+
+test("recovery clips an oversized latest request safely and leaves stored messages intact", t => {
+  const { store, id } = fixture(t, 0);
+  const text = "new-request: " + "한글🚀".repeat(50000);
+  store.appendEvent(id, { kind: "message", message: { id: "huge", authorType: "user", author: "user", text } });
+  const result = readRecoveryContext(store.transcriptPath(id), { throughId: "huge" });
+  assert.equal(result.truncated, true);
+  assert.equal(result.messages.length, 1);
+  assert.match(result.messages[0].text, /^new-request:/);
+  assert.ok(Buffer.byteLength(JSON.stringify(result.messages[0])) + 1 <= RECOVERY_CONTEXT_BYTES);
+  assert.equal(result.messages[0].text, Buffer.from(result.messages[0].text).toString("utf8"));
+  assert.equal(store.readMessagesPage(id).messages[0].text, text);
+  const small = readRecoveryContext(store.transcriptPath(id), { throughId: "huge", maxBytes: 5 });
+  assert.equal(small.truncated, true);
+  assert.deepEqual(small.messages, []);
+});
 
 test("최근 50개부터 이전 페이지를 누락·중복 없이 시간순으로 읽는다", (t) => {
   const { store, id, messages } = fixture(t);

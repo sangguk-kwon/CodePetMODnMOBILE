@@ -466,7 +466,9 @@ class ChatRoom extends EventEmitter {
     // 큐에서 기다리는 사이 참가자가 비활성화되거나 CLI가 사라졌다면 실행하지 않습니다.
     const currentAgent = this.findAgent(agent.id);
     if (!currentAgent || !currentAgent.available || currentAgent.enabled === false) return;
-    agent = currentAgent;
+    // Freeze the turn's choices before asynchronous preparation, approval or execution.
+    // setAgents() and direct updates must only affect later turns.
+    agent = { ...currentAgent };
 
     const mentionDepth = context.mentionDepth || 0;
     let broadcast = context.broadcast || null;
@@ -547,6 +549,16 @@ class ChatRoom extends EventEmitter {
     // 새 대화에 끼어드는 것을 막는 stale-run 가드입니다.
     if (generation !== this.generation || result?.cancelled) return;
 
+    const agentMeta = {
+      providerId: agent.providerId || agent.id,
+      name: agent.name,
+      mention: agentMention(agent),
+      model: agent.model || "default",
+      effort: agent.effort || "default",
+      version: agent.version || "",
+      ...(result?.appliedModel ? { appliedModel: result.appliedModel } : {}),
+      ...(result?.appliedEffort ? { appliedEffort: result.appliedEffort } : {}),
+    };
     if (!result?.ok) {
       // 진단 기록에 자동 승인/재시도 맥락을 더해 transcript에 함께 저장합니다.
       const diagnostics = result?.diagnostics
@@ -563,6 +575,7 @@ class ChatRoom extends EventEmitter {
         exitCode: result?.exitCode,
         error: true,
         runId,
+        agentMeta,
         ...(diagnostics ? { diagnostics } : {}),
       });
       return { ok: false };
@@ -592,14 +605,7 @@ class ChatRoom extends EventEmitter {
       author: agent.id,
       text,
       runId,
-      agentMeta: {
-        providerId: agent.providerId || agent.id,
-        name: agent.name,
-        mention: agentMention(agent),
-        model: agent.model || "default",
-        effort: agent.effort || "default",
-        version: agent.version || "",
-      },
+      agentMeta,
       ...(emoticons.length > 0 ? { emoticons } : {}),
       ...(emoticons.length > 0 ? { contentParts: extracted.parts } : {}),
       ...(result.deliveries ? { deliveries: result.deliveries } : {}),

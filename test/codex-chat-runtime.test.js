@@ -104,6 +104,30 @@ test("missing legacy history leaves the saved cursor intact instead of silently 
   assert.equal(fs.readFileSync(old.file, "utf8"), before);
 });
 
+test("legacy candidate migration removes model scope while copying the old source-home rollout", t => {
+  const f = fixture(t), id = randomUUID();
+  rollout(f.sourceHome, id);
+  const store = new ChatStore({ root: path.join(f.root, "chat") }).init(), room = store.createSession({}).id;
+  const oldScope = { providerId: "codex", home: f.sourceHome, cwd: "workspace", model: "default", effort: "low" };
+  const previous = new NativeSessionLink(store, room, "codex", oldScope);
+  previous.observe(id); previous.delivered("anchor");
+  const runtime = f.prepare(), scope = { providerId: "codex", home: runtime.home, cwd: "workspace" };
+  const link = new NativeSessionLink(store, room, "codex", scope, { legacyScopes: [
+    { scope: { ...oldScope, home: runtime.home } },
+    { scope: oldScope, migrate: runtime.migrate },
+  ] });
+  assert.equal(link.cliSessionId, id);
+  assert.equal(link.lastMessageId, "anchor");
+  assert.equal(link.scopeReset, false);
+  assert.ok(findRollout(runtime.home, id));
+  assert.equal(new NativeSessionLink(store, room, "codex", scope).cliSessionId, id);
+  for (const changed of [{ ...scope, cwd: "other" }, { ...scope, home: "other-account" }]) {
+    const reset = new NativeSessionLink(store, room, "codex", changed, { legacyScopes: [{ scope: { ...changed, model: "default", effort: "low" } }] });
+    assert.equal(reset.cliSessionId, null);
+    new NativeSessionLink(store, room, "codex", scope).observe(id);
+  }
+});
+
 test("sandbox preparation targets the private home while retaining the machine source", async t => {
   const f = fixture(t), calls = [];
   f.runtime.sandbox.ensure = async (...args) => calls.push(args);

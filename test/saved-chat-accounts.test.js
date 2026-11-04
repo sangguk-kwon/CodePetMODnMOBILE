@@ -28,7 +28,11 @@ for (const providerId of ["claude", "grok"]) {
     const credentialStore = (dir) => ({ read: () => credentials.get(dir), write: (value) => credentials.set(dir, value) });
     const base = { id: providerId, name: providerId, status: "cli", commandPath: "one-cli" };
     const service = new SavedChatAccounts({ providerId, switcher: { home, store }, credentialStore,
-      probe: async (...args) => { calls.push(args[3].env); return [{ id: `model-${path.basename(args[3].env.CLAUDE_CONFIG_DIR || args[3].env.GROK_HOME)}` }]; } });
+      probe: async (...args) => {
+        calls.push(args[3].env);
+        const envName = providerId === "claude" ? "CLAUDE_CONFIG_DIR" : "GROK_HOME";
+        return [{ id: `model-${path.basename(args[3].env[envName])}` }];
+      } });
     const records = await Promise.all(profiles.map((profile) => service.discover(profile.key, base)));
     assert.ok(records.every((record) => record.catalogStatus === "ready"));
     assert.notEqual(records[0].models[0], records[1].models[0]);

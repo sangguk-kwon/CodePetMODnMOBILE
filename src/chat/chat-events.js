@@ -82,7 +82,7 @@ function parseCodexLine(line, event = parseJsonLine(line)) {
       const message = String(item.message || "");
       // Codex가 매 턴 시작에 error 아이템으로 보내는 스킬 컨텍스트 예산 경고는
       // 실행 오류가 아니므로 진단 기록을 오염시키지 않게 무시합니다.
-      if (/skill descriptions were shortened/i.test(message)) return null;
+      if (/skill descriptions were shortened/i.test(message) || /^This session was recorded with model\b/i.test(message.trim())) return null;
       return { kind: "error", message: truncateLabel(message || "실행 오류", 200) };
     }
     return null;
@@ -197,14 +197,23 @@ function nativeSessionId(providerId, event) {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
 }
 
-function createLineParser(providerId, onTrace = null, onNativeSession = null) {
+function createLineParser(providerId, onTrace = null, onNativeSession = null, onAppliedModel = null) {
   const parser = { claude: parseClaudeLine, codex: parseCodexLine, agy: parseAgyLine, grok: parseGrokLine }[providerId];
   if (!parser) return null;
-  if (typeof onTrace !== "function" && typeof onNativeSession !== "function") return parser;
+  if (typeof onTrace !== "function" && typeof onNativeSession !== "function" && typeof onAppliedModel !== "function") return parser;
   const { traceEvents } = require("./chat-trace-events");
   const pending = new Set();
   const tracedParser = (line) => {
     const parsed = parseJsonLine(line);
+    // Only this turn's main Claude messages report an applied model. modelUsage
+    // is cumulative across resumed turns; child-agent models do not describe this run.
+    if (providerId === "claude" && !parsed?.parent_tool_use_id && typeof onAppliedModel === "function") {
+      const model = parsed?.type === "system" && parsed.subtype === "init" ? parsed.model
+        : parsed?.type === "assistant" ? parsed.message?.model : null;
+      if (typeof model === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(model)) {
+        try { onAppliedModel(model, parsed.type); } catch {}
+      }
+    }
     const sessionId = nativeSessionId(providerId, parsed);
     try {
       if (sessionId && typeof onNativeSession === "function") onNativeSession(sessionId);

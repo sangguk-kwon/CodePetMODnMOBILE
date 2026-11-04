@@ -50,3 +50,11 @@ test("채팅 설정 IPC는 본체의 기존 설정창 열기 콜백만 호출한
   assert.equal(openCount, 1);
   assert.match(source("src/main.js"), /openSettings: \(\) => openSettingsWindow\(\)/);
 });
+
+test("모델·추론 변경 시점을 안내하고 메시지는 실제 적용 값을 우선 표시한다", () => {
+  const renderer = source("src/chat.js");
+
+  assert.match(renderer, /변경은 다음 턴부터 적용됩니다\. 진행 중인 응답은 기존 설정을 유지합니다\./);
+  assert.match(renderer, /modelLabel\(saved\.appliedModel \|\| saved\.model \|\| agent\?\.model\)/);
+  assert.match(renderer, /effortLabel\(saved\.appliedEffort \|\| saved\.effort \|\|/);
+});

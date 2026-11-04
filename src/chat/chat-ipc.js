@@ -23,7 +23,7 @@ const { ChatTraceStore } = require("./chat-traces");
 const { runWithTraceAccess } = require("./chat-trace-access");
 const { DEFAULT_MAX_MESSAGES, buildAgentPrompt } = require("./chat-prompt");
 const { NativeSessionLink } = require("./chat-native-sessions");
-const { readMessageRange } = require("./chat-history");
+const { readMessageRange, readRecoveryContext } = require("./chat-history");
 const { GrokDockerRuntime } = require("../grok-docker-runtime");
 const {
   importAttachment,
@@ -411,15 +411,35 @@ function createChatFeature(options) {
             const scope = {
               providerId, profileKey: config.profileKey || null, activeKey, home,
               cwd: invocation.cwd, permissionMode, autoApprove: invocationInput.autoApprove,
-              model: agent.model || "default", effort: agent.effort || "default",
             };
-            native = new NativeSessionLink(store, sessionId, agent.id, scope, runtime
-              ? { legacyScope: { ...scope, home: sourceHome }, migrate: runtime.migrate } : {});
+            const legacyScopes = [];
+            for (const oldModel of new Set([agent.model || "default", "default"])) {
+              for (const oldEffort of new Set([agent.effort || "default", "default"])) {
+                legacyScopes.push({ scope: { ...scope, model: oldModel, effort: oldEffort } });
+                if (runtime && sourceHome !== home) legacyScopes.push({
+                  scope: { ...scope, home: sourceHome, model: oldModel, effort: oldEffort }, migrate: runtime.migrate,
+                });
+              }
+            }
+            if (runtime && sourceHome !== home) legacyScopes.push({ scope: { ...scope, home: sourceHome }, migrate: runtime.migrate });
+            native = new NativeSessionLink(store, sessionId, agent.id, scope, { legacyScopes });
             if (providerId === "codex" && native.cliSessionId) codexRooms.set(native.cliSessionId, sessionId);
           }
           let processPrompt = nextPrompt;
           if (continuationPrompt && native.cliSessionId) {
             processPrompt = continuationPrompt;
+          } else if (!continuationPrompt && native.scopeReset && promptContext) {
+            const recovery = readRecoveryContext(store.transcriptPath(sessionId), { throughId });
+            if (recovery === null) throw new Error("새 CLI 세션에 전달할 대화 기록을 찾지 못했습니다.");
+            const notice = recovery.truncated
+              ? "대화 복구의 256KiB 메시지 예산으로 이전 메시지 또는 긴 메시지 일부가 생략되었습니다. 아래 대화가 전체 기록이라고 가정하지 마세요."
+              : "";
+            processPrompt = [buildAgentPrompt({ ...promptContext, messages: recovery.messages, maxMessages: recovery.messages.length,
+              extraLines: [...(promptContext.extraLines || []), ...(notice ? [notice] : [])] }),
+              ...extraLines, traceContext].filter(Boolean).join("\n");
+            onEvent({ kind: "status", label: recovery.truncated
+              ? "새 CLI 세션에 최근 대화를 전달합니다. 256KiB 예산으로 일부 기록이 생략되었습니다."
+              : "새 CLI 세션에 최근 대화를 전달합니다(메시지 예산 256KiB)." });
           } else if (!continuationPrompt && native.cliSessionId && native.lastMessageId && promptContext) {
             const messages = readMessageRange(store.transcriptPath(sessionId), {
               afterId: native.lastMessageId, throughId, agentId: agent.id,
@@ -442,6 +462,8 @@ function createChatFeature(options) {
           });
 
           const nativeSessions = new Set();
+          let appliedModel;
+          let assistantModelSeen = false;
           let linkError = null;
           let performedWork = false;
           const processRun = runAgentProcess({
@@ -471,6 +493,9 @@ function createChatFeature(options) {
                 cwd: execution.cwd,
                 home,
               });
+            }, (model, source) => {
+              if (source === "assistant") assistantModelSeen = true;
+              if (source === "assistant" || !assistantModelSeen) appliedModel = model;
             }),
             onEvent: (event) => {
               if (!cancelled && ["delta", "final"].includes(event?.kind)) native.delivered(throughId);
@@ -483,7 +508,8 @@ function createChatFeature(options) {
             onCancel: execution.onCancel,
           });
           const completion = processRun.promise.then((result) => {
-            result = { ...result, sideEffectsPossible: performedWork };
+            result = { ...result, sideEffectsPossible: performedWork,
+              ...(appliedModel ? { appliedModel } : {}) };
             if (linkError) return { ...result, ok: false, error: linkError.message };
             if (result.ok && !result.cancelled && !cancelled) native.delivered(throughId);
             return result;

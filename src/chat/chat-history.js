@@ -95,6 +95,50 @@ function readMessageRange(file, { afterId, throughId, agentId }) {
   } finally { fs.closeSync(fd); }
 }
 
+const RECOVERY_CONTEXT_BYTES = 256 * 1024;
+
+// Recover a recent suffix, including this participant's answers, without loading
+// the entire transcript. JSON message bytes conservatively budget text/metadata.
+function readRecoveryContext(file, { throughId, maxBytes = RECOVERY_CONTEXT_BYTES }) {
+  if (!throughId) return null;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error("대화 복구 바이트 예산이 올바르지 않습니다.");
+  const fd = fs.openSync(file, "r");
+  try {
+    let within = false, bytes = 0;
+    const messages = [];
+    for (const line of reverseLines(fd, fs.fstatSync(fd).size)) {
+      let event;
+      try { event = JSON.parse(line.raw.toString("utf8")); } catch { continue; }
+      const message = event?.kind === "message" ? event.message : null;
+      if (!message) continue;
+      if (message.id === throughId) within = true;
+      if (!within || message.authorType === "system" || message.error) continue;
+      const size = Buffer.byteLength(JSON.stringify(message), "utf8") + 1;
+      if (bytes + size > maxBytes) {
+        // Preserve the beginning of an oversized latest request rather than
+        // silently giving the new CLI no user request at all. Never split UTF-16 pairs.
+        if (!messages.length) {
+          const clipped = { id: message.id, authorType: message.authorType, author: message.author, text: "" };
+          const text = String(message.text || "");
+          let low = 0, high = text.length;
+          while (low < high) {
+            const mid = Math.ceil((low + high) / 2);
+            clipped.text = text.slice(0, mid);
+            if (Buffer.byteLength(JSON.stringify(clipped), "utf8") + 1 <= maxBytes) low = mid;
+            else high = mid - 1;
+          }
+          clipped.text = text.slice(0, low).replace(/[\uD800-\uDBFF]$/, "");
+          if (Buffer.byteLength(JSON.stringify(clipped), "utf8") + 1 <= maxBytes) messages.push(clipped);
+        }
+        return { messages: messages.reverse(), truncated: true };
+      }
+      messages.push(message);
+      bytes += size;
+    }
+    return within ? { messages: messages.reverse(), truncated: false } : null;
+  } finally { fs.closeSync(fd); }
+}
+
 // Inspect only the final record, never the entire transcript on append.
 function repairAppendBoundary(file) {
   let fd;
@@ -135,4 +179,5 @@ function* reverseMessages(file) {
     }
   } finally { fs.closeSync(fd); }
 }
-module.exports = { readMessagePage, readMessageRange, repairAppendBoundary, reverseMessages, HISTORY_PAGE_SIZE };
+module.exports = { readMessagePage, readMessageRange, readRecoveryContext, RECOVERY_CONTEXT_BYTES,
+  repairAppendBoundary, reverseMessages, HISTORY_PAGE_SIZE };

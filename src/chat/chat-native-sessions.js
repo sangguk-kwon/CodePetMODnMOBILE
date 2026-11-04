@@ -8,7 +8,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // A tiny cursor per participant, separate from renderer-visible metadata and
 // the append-only transcript. Native histories remain owned by each CLI.
 class NativeSessionLink {
-  constructor(store, sessionId, agentId, scope, { legacyScope, migrate } = {}) {
+  constructor(store, sessionId, agentId, scope, { legacyScope, migrate, legacyScopes = [] } = {}) {
     this.store = store;
     this.sessionId = sessionId;
     this.agentId = agentId;
@@ -20,10 +20,14 @@ class NativeSessionLink {
         (previous.cliSessionId !== null && !UUID.test(previous.cliSessionId)))) {
       throw new Error("CLI 세션 연결 정보가 손상되었습니다.");
     }
-    const legacyHash = legacyScope && createHash("sha256").update(JSON.stringify(legacyScope)).digest("hex");
-    const migrating = previous?.scope === legacyHash && UUID.test(previous?.cliSessionId) && typeof migrate === "function";
-    if (migrating) migrate(previous.cliSessionId); // Failure leaves the original cursor intact.
-    this.cliSessionId = (previous?.scope === this.scope || migrating) && UUID.test(previous.cliSessionId) ? previous.cliSessionId : null;
+    const candidates = legacyScope ? [...legacyScopes, { scope: legacyScope, migrate }] : legacyScopes;
+    const legacy = previous?.scope !== this.scope && UUID.test(previous?.cliSessionId)
+      ? candidates.find(candidate => previous.scope === createHash("sha256").update(JSON.stringify(candidate.scope)).digest("hex"))
+      : null;
+    // Copy a legacy Codex rollout before replacing its cursor; a failed copy leaves it intact.
+    if (legacy && typeof legacy.migrate === "function") legacy.migrate(previous.cliSessionId);
+    this.cliSessionId = (previous?.scope === this.scope || legacy) && UUID.test(previous?.cliSessionId) ? previous.cliSessionId : null;
+    this.scopeReset = Boolean(previous?.cliSessionId && !this.cliSessionId);
     this.lastMessageId = this.cliSessionId ? previous.lastMessageId || null : null;
     this.write(true);
   }

@@ -42,6 +42,11 @@ XAML 버튼은 HWND가 없어 UI Automation의 `WidgetsButton`으로 위치를 �
 - 원본 추적 `main` 동기화의 자동 릴리스를 막기 위해 `push`/태그 트리거를 없앴다.
   `workflow_dispatch`만 허용하고 실제 저장소와 ref가 포크의 `develop`인지 확인한 뒤 진행한다.
   배포 workflow를 실행하거나 릴리스를 게시하지 않았다.
+- 중요한 운영 한계: `origin/main`에는 옛 `main`/`v*` push 트리거가 그대로 남아 있다.
+  GitHub는 이벤트 ref의 workflow를 읽으므로 `develop` 수정만으로 그 실행까지 차단하지는 않는다.
+  main을 원본 그대로 유지하려면 동기화 전에 옛 Release workflow의 저장소 수준 비활성화 등
+  별도 운영 조치가 필요하다. 이번 작업은 로컬 코드만 수정했고 Actions 설정·main·원격 태그는 건드리지 않았다.
+  근거: [GitHub workflow 실행 기준](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows).
 - 포크에 정식 릴리스가 없으면 조회 불가 상태를 반환하고 원본으로 대체하지 않는다.
   현재 원본 앱은 포크 빌드를 한 번 수동 설치해야 하며 이후 높은 버전의 포크 릴리스를 제공해야 한다.
 - Node `22.23.4`의 업데이트·릴리스 관련 모의 검사 45개 통과. 실제 Windows 설치/롤백,

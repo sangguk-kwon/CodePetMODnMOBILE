@@ -22,7 +22,9 @@ Right-click the pet or tray icon to open Settings, manage accounts, or launch **
 
 On Windows portable builds, the update button in Settings downloads and applies the new version, then restarts CodePet. On Linux and macOS, the same button opens the new version's download.
 
-The update channel is **sangguk-kwon/CodePetMODnMOBILE**, including checksum verification and AppImage update metadata. Until a stable fork release is published, checks report that no update is available to fetch; they do not fall back to upstream. Install a fork build manually once to switch an existing upstream installation. Version numbers must increase for later updates to be offered. Releases are manually dispatched from `develop`; syncing upstream into `main` or pushing tags does not publish a release.
+The update channel is **sangguk-kwon/CodePetMODnMOBILE**, including checksum verification and AppImage update metadata. Until a stable fork release is published, checks report that no update is available to fetch; they do not fall back to upstream. Install a fork build manually once to switch an existing upstream installation. Version numbers must increase for later updates to be offered. This branch's release workflow only accepts manual dispatches from `develop`.
+
+Before syncing the upstream-tracking `main` or pushing upstream tags, separately disable its legacy release workflow: workflow changes on `develop` do not change the original workflow still present on `main`. Repository Actions settings have not been changed by this implementation.
 
 ## Features
 

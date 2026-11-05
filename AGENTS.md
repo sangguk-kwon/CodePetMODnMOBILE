@@ -27,7 +27,7 @@
 - PR은 항상 `gh pr create --repo sangguk-kwon/CodePetMODnMOBILE --base develop`으로 만들고, 생성 후 대상 저장소를 확인한다. GitHub 화면의 PR 버튼은 대상이 원본으로 잡힐 수 있으니 저장소를 먼저 확인한다.
 - 계획 문서를 원본 유지 브랜치에 덮어쓰거나 원본 변경과 개인 기능을 강제 푸시로 맞추지 않는다.
 - upstream 변경은 별도 병합 브랜치에서 검증하고 `develop`에 반영한다.
-- 개조판 릴리스는 이 Fork의 `develop`에서 수동 실행한다. `main`/태그 푸시로 자동 게시하지 않는다. 실제 릴리스 게시는 사용자 지시에 따라 별도로 진행한다.
+- 개조판 릴리스는 이 Fork의 `develop`에서 수동 실행한다. 원본 추적 `main`에 남은 옛 workflow는 이 브랜치의 변경으로 차단되지 않으므로 `main`/원본 태그 동기화 전에 별도로 비활성화한다. 실제 릴리스 게시는 사용자 지시에 따라 별도로 진행한다.
 - `LICENSE`, 원본 저작권 표시, `THIRD_PARTY_NOTICES.md`와 개별 자산의 출처를 유지한다.
 
 ## 구현 원칙

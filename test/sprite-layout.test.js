@@ -22,7 +22,7 @@ test("이미지 비율을 판별할 수 없으면 spriteVersionNumber를 fallbac
   assert.equal(rowsFromSpriteVersion(1), 9);
   assert.equal(rowsFromSpriteVersion(2), 11);
   assert.equal(detectSpriteRows({ spriteVersionNumber: 2 }), 11);
-  assert.equal(detectSpriteRows({ width: 1, height: 1, spriteVersionNumber: 1 }), 9);
+  assert.equal(detectSpriteRows({ width: 1, height: 1, spriteVersionNumber: 2 }), 11);
 });
 
 test("v2의 waiting, running, review는 투명한 뒤쪽 셀을 재생하지 않는다", () => {
@@ -54,4 +54,14 @@ test("빈 애니메이션 프레임은 건너뛰고 빈 방향은 가장 가까�
   assert.equal(nearestPlayableDirection(3, [0, 2, 4, 8]), 2);
   assert.equal(nearestPlayableDirection(15, [0, 8]), 0);
   assert.equal(nearestPlayableDirection(4, []), null);
+});
+
+test("내장 클로드 펫은 시선 동작을 포함한 11행 규격으로 등록된다", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const sprite = fs.readFileSync(path.join(__dirname, "..", "src", "pets", "claude", "spritesheet.webp"));
+  assert.equal(sprite.toString("ascii", 12, 16), "VP8X");
+  const width = sprite.readUIntLE(24, 3) + 1, height = sprite.readUIntLE(27, 3) + 1;
+  assert.equal(detectSpriteRows({ width, height, spriteVersionNumber: 2 }), 11);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8"), /key: "builtin:claude", label: "클로드 \(내장\)"/);
 });

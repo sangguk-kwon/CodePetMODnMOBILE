@@ -1,5 +1,23 @@
 # Release notes / 릴리즈 노트
 
+## 1.2.3 — 2026-11-05
+
+### English
+
+- First CodePetMODnMOBILE fork release. App updates now come from this fork.
+- Keep the CLI session when the model or reasoning effort changes; changes apply from the next turn.
+- Show the model Claude actually reports on each message.
+- Keep the Windows taskbar usage widget clear of the weather button on left-aligned taskbars.
+- Send repeated chat rules only when needed to reduce prompt size.
+
+### 한국어
+
+- CodePetMODnMOBILE 포크의 첫 릴리스입니다. 앱 업데이트는 이제 이 포크에서 받습니다.
+- 모델이나 추론 강도를 바꿔도 CLI 세션을 유지하며, 변경은 다음 턴부터 적용됩니다.
+- 메시지에 Claude가 실제로 알려준 모델을 표시합니다.
+- 왼쪽 정렬 작업표시줄에서 사용량 위젯이 날씨 버튼을 가리지 않습니다.
+- 반복되는 채팅 규칙을 필요할 때만 보내 프롬프트 크기를 줄입니다.
+
 ## 1.2.2 — 2026-10-29
 
 ### English

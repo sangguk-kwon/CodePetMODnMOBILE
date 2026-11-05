@@ -214,7 +214,7 @@ const SPRITE_ASSET = Object.freeze({
   mimeType: "image/webp",
   spriteVersionNumber: 2,
 });
-// 내장 클로드 펫입니다. scripts/generate-claude-pet.js로 채팅 이모티콘에서 생성합니다.
+// 내장 클로드 펫입니다. scripts/generate-claude-pet.js로 build/claude-pet-source.png에서 생성합니다.
 const CLAUDE_SPRITE_PATH = path.join(__dirname, "pets", "claude", "spritesheet.webp");
 
 // Codex CLI가 설치한 펫 에셋 폴더입니다. 폴더마다 pet.json + spritesheet.webp가 들어 있고,
@@ -405,7 +405,7 @@ function listAvailablePets() {
   }
 
   if (fs.existsSync(CLAUDE_SPRITE_PATH)) {
-    pets.push({ key: "builtin:claude", label: "클로드 (내장)", spritePath: CLAUDE_SPRITE_PATH, spriteVersionNumber: 1 });
+    pets.push({ key: "builtin:claude", label: "클로드 (내장)", spritePath: CLAUDE_SPRITE_PATH, spriteVersionNumber: 2 });
   }
 
   return pets;

@@ -1,6 +1,6 @@
 # Hidden-parent integration test: never attaches to Explorer or shows a window.
 $ErrorActionPreference = 'Stop'
-Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing,System.Web.Extensions -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot '../src/windows-taskbar-host.cs')))
+Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing,System.Web.Extensions,UIAutomationClient,UIAutomationTypes,WindowsBase -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot '../src/windows-taskbar-host.cs')))
 $taskbarTestParent = New-Object System.Windows.Forms.Form
 $taskbarTestParent.ClientSize = New-Object System.Drawing.Size(1920, 48)
 $taskbarTestWidget = New-Object CodePetTaskbar($taskbarTestParent.Handle)

@@ -6,6 +6,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Web.Script.Serialization;
+using System.Windows.Automation;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -51,6 +52,8 @@ public sealed class CodePetTaskbar : Form {
   public int RenderError { get; private set; }
   int renderedWidth, renderedHeight;
   bool hover, lightTheme = ReadLightTheme();
+  // Screen x of the Windows Widgets (weather) button, or -1 when absent.
+  static volatile int widgetsLeft = -1;
   // Column geometry at 100% scale (48px taskbar); keep Position() and DrawContent() in sync.
   const int IconColumn = 36, RowWidth = 52, TrailingPad = 6;
   public CodePetTaskbar(IntPtr parent) {
@@ -111,6 +114,9 @@ public sealed class CodePetTaskbar : Form {
     Rect nr;
     if (notify != IntPtr.Zero && GetWindowRect(notify, out nr)) available = Math.Max(0, nr.Left - tr.Left);
     float scale = Math.Max(1f, height / 48f);
+    // A left-aligned taskbar puts the Widgets button beside the tray; a centered one puts it far left.
+    int widgetsX = widgetsLeft - tr.Left;
+    if (widgetsX >= available / 2 && widgetsX < available) available = Math.Max(0, widgetsX - (int)(4 * scale));
     int width = Math.Min(available, (int)((IconColumn + Math.Max(1, state.rows.Length) * RowWidth + TrailingPad) * scale));
     bool light = ReadLightTheme();
     if (light != lightTheme) { lightTheme = light; needsRender = true; }
@@ -224,6 +230,24 @@ public sealed class CodePetTaskbar : Form {
     if (disposing) { tooltip.Dispose(); if (picture != null) picture.Dispose(); }
     base.Dispose(disposing);
   }
+  // XAML taskbar buttons have no HWND. UI Automation must stay off the UI thread:
+  // our form is inside the queried tree, so a UI-thread query would wait on itself.
+  static void WatchWidgetsButton() {
+    Condition button = new PropertyCondition(AutomationElement.AutomationIdProperty, "WidgetsButton");
+    while (true) {
+      try {
+        int left = -1;
+        IntPtr parent = FindWindow("Shell_TrayWnd", null);
+        AutomationElement found = parent == IntPtr.Zero ? null : AutomationElement.FromHandle(parent).FindFirst(TreeScope.Descendants, button);
+        if (found != null) {
+          AutomationElement.AutomationElementInformation info = found.Current;
+          if (!info.IsOffscreen && !info.BoundingRectangle.IsEmpty && info.BoundingRectangle.Width > 0) left = (int)info.BoundingRectangle.Left;
+        }
+        widgetsLeft = left;
+      } catch { }
+      Thread.Sleep(2000);
+    }
+  }
   [STAThread] public static void Run() {
     SetProcessDPIAware();
     Application.EnableVisualStyles();
@@ -237,6 +261,8 @@ public sealed class CodePetTaskbar : Form {
       } } catch { } finally { lock (gate) { ended = true; } }
     });
     reader.IsBackground = true; reader.Start();
+    Thread watcher = new Thread(WatchWidgetsButton);
+    watcher.IsBackground = true; watcher.Start();
     CodePetTaskbar widget = null;
     State applied = null;
     using (System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer()) {

@@ -22,6 +22,18 @@
 기존 계획 커밋은 문서와 README 안내만 바꿨다. 현재 작업 브랜치의 UI 초안은
 별도 미커밋 변경이며, 앱 ID·사용자 계정·전역 CLI 설정은 변경하지 않았다.
 
+## 2026-11-05 / 일상 사용 개선 / fix/taskbar-weather-overlap
+
+바뀐 동작: 왼쪽 정렬 작업표시줄에서 사용량 위젯이 Windows 위젯(날씨) 버튼 왼쪽에 놓인다.
+XAML 버튼은 HWND가 없어 UI Automation의 `WidgetsButton`으로 위치를 읽는다. 조회는 UI 스레드 밖에서
+2초마다 실행한다. 위젯이 작업표시줄 트리 안에 있어 UI 스레드에서 조회하면 자기 자신을 기다릴 수 있다.
+
+검증: Windows 11 왼쪽 정렬·100% 배율 실기기에서 날씨 버튼 x=2150, 위젯 x=2000~2146으로 겹침 없음.
+`scripts/test-taskbar-renderer.ps1` PASS. 가운데 정렬·고배율·다중 모니터는 미검증.
+
+병합 기록: PR #1(모델·추론 변경 후 세션 유지), PR #2(Fork 전용 작업 규칙)가 `develop`에 병합됐다.
+원본의 nokryong/CodePet#28은 의도치 않게 열렸다가 병합 없이 닫혔고, 생성 경위는 확정하지 못했다.
+
 ## 2026-11-04 / P0·P1 / feat/model-effort-continuity
 
 ### Codex의 최초 기준선 시도와 환경 제약 (이후 Claude의 검증 보고는 아래 참고)

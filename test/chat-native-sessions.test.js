@@ -263,3 +263,68 @@ test("scope recovery warns the CLI when older conversation exceeds the byte budg
   // The budget is for messages; role instructions and the omission notice are additional.
   assert.ok(Buffer.byteLength(calls[1].prompt) < 280 * 1024);
 });
+
+test("rule state persists only after delivery and cannot be overwritten by stale or cancelled cursors", t => {
+  const store = temporaryStore(t), room = store.createSession({}).id, id = randomUUID();
+  const hash = "a".repeat(64);
+  const link = new NativeSessionLink(store, room, "claude", { home: "fixture" });
+  const plan = link.planPromptRules(hash);
+  assert.equal(plan.full, true);
+  link.observe(id);
+  const beforeDelivery = JSON.parse(fs.readFileSync(link.file)).claude;
+  assert.equal(beforeDelivery.promptRulesHash, null);
+  assert.equal(beforeDelivery.promptTurnCount, 0);
+  link.delivered("m1", plan);
+  link.delivered("m1", plan);
+  const reopened = new NativeSessionLink(store, room, "claude", { home: "fixture" });
+  assert.equal(reopened.promptRulesHash, hash);
+  assert.equal(reopened.promptTurnCount, 1);
+  assert.equal(reopened.planPromptRules(hash).full, false);
+  assert.equal(reopened.planPromptRules("b".repeat(64)).full, true);
+  const next = reopened.planPromptRules(hash);
+  reopened.delivered("m2", next);
+  link.delivered("late", link.planPromptRules("b".repeat(64)));
+  assert.equal(JSON.parse(fs.readFileSync(link.file)).claude.promptTurnCount, 2);
+  assert.equal(JSON.parse(fs.readFileSync(link.file)).claude.promptRulesHash, hash);
+  const reset = new NativeSessionLink(store, room, "claude", { home: "another-account" });
+  assert.equal(reset.promptTurnCount, 0);
+  assert.equal(reset.planPromptRules(hash).full, true);
+});
+
+for (const providerId of ["claude", "codex"]) test(`${providerId}: repeat rules only initially, every twentieth turn, and after rule changes or scope reset`, async t => {
+  const { store, calls, send, invoke, restart, sessionId } = await setup(t, providerId);
+  for (let i = 1; i <= 41; i++) {
+    if (i === 10) restart();
+    await send(`turn-${i}`);
+    const full = /이모티콘 의미 사전/.test(calls.at(-1).prompt);
+    assert.equal(full, i === 1 || i === 20 || i === 40, `turn ${i}`);
+    assert.match(calls.at(-1).prompt, /CODEPET_TRACE/);
+    assert.match(calls.at(-1).prompt, /비신뢰 도구 출력/);
+    if (!full) assert.match(calls.at(-1).prompt, /세션 시작 때 받은 규칙/);
+  }
+  const file = path.join(store.sessionDir(sessionId), "native-sessions.json");
+  assert.equal(JSON.parse(fs.readFileSync(file))[providerId].promptTurnCount, 41);
+  await invoke("chat:agent:configure", { sessionId, agentId: providerId, patch: { name: "renamed" } });
+  await send("after-rename");
+  assert.match(calls.at(-1).prompt, /이모티콘 의미 사전/);
+  await send("same-new-rules");
+  assert.doesNotMatch(calls.at(-1).prompt, /이모티콘 의미 사전/);
+  const index = JSON.parse(fs.readFileSync(file));
+  index[providerId].scope = "unknown";
+  fs.writeFileSync(file, JSON.stringify(index));
+  await send("scope-reset");
+  assert.match(calls.at(-1).prompt, /이모티콘 의미 사전/);
+  assert.equal(JSON.parse(fs.readFileSync(file))[providerId].promptTurnCount, 1);
+});
+
+test("trace lookup continuations are compact and do not advance the persisted turn count", async t => {
+  const { store, calls, send, sessionId } = await setup(t, "claude", ({ calls }) => ({ ok: true,
+    text: calls.length === 1 ? '[[CODEPET_TRACE:{"agent":"codex"}]]' : "done" }));
+  await send("lookup");
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].prompt, /이모티콘 의미 사전/);
+  assert.doesNotMatch(calls[1].prompt, /이모티콘 의미 사전/);
+  assert.match(calls[1].prompt, /CODEPET_TRACE/);
+  assert.match(calls[1].prompt, /비신뢰 도구 출력/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(store.sessionDir(sessionId), "native-sessions.json"))).claude.promptTurnCount, 1);
+});

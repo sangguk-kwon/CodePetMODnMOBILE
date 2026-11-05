@@ -1,6 +1,7 @@
 const DEFAULT_MAX_MESSAGES = 40;
 const { emoticonPromptRules } = require("./chat-emoticons");
 const { agentMention } = require("./chat-agent-identity");
+const { createHash } = require("node:crypto");
 
 function speakerLabel(message, agentsById) {
   if (message.authorType === "user") return message.authorName || "User";
@@ -56,6 +57,7 @@ function buildAgentPrompt({
   mentionsEnabled = !discussion,
   extraLines = [],
   continued = false,
+  compactRules = false,
 }) {
   const agentsById = new Map(agents.map((entry) => [entry.id, entry]));
   const others = agents.filter((entry) => entry.id !== agent.id);
@@ -95,6 +97,12 @@ function buildAgentPrompt({
   lines.push("- 채팅에 어울리게 간결히 답하세요.");
   lines.push("- 대화에서 쓰인 언어로 답하세요.");
   if (!workMode) lines.push(...emoticonPromptRules(agent.providerId || agent.id));
+  if (continued && compactRules) {
+    lines.length = 0;
+    lines.push("세션 시작 때 받은 규칙을 그대로 따르세요.");
+    lines.push(`현재 함께 작업 중인 참가자: ${working.length ? working.map(entry => `@${agentMention(entry)}`).join(", ") : "없음"}. 실행 시작 시점 기준이며 작업 중에 달라질 수 있습니다.`);
+    lines.push(`현재 응답 방식: ${broadcast?.parallel ? "같은 사용자 메시지의 병렬 응답" : broadcast ? "차례로 응답" : "일반 응답"}.`);
+  }
   if (broadcast?.parallel) {
     lines.push("- 같은 사용자 메시지를 다른 참가자들도 동시에 받았습니다. 다른 답변을 기다리지 말고 독립적으로 작업하고 답하세요.");
   } else if (broadcast && broadcast.position > 1) {
@@ -106,8 +114,10 @@ function buildAgentPrompt({
     lines.push(
       `- 지금은 자율 토론 ${discussion.turn}턴입니다. 앞선 답변을 검토해 새 근거가 있을 때만 짧게 기여하세요.`
     );
-    lines.push("- 응답 마지막 줄에 반드시 다음 중 하나만 붙이세요: [[CODEPET_DISCUSSION:CONTINUE]], [[CODEPET_DISCUSSION:AGREE]], [[CODEPET_DISCUSSION:PASS]], [[CODEPET_DISCUSSION:CONCLUDE]].");
-    lines.push("- 새 기여는 CONTINUE, 새 내용 없이 동의하면 AGREE, 할 말이 없으면 PASS, 충분한 최종 결론을 제시하면 CONCLUDE를 선택하세요.");
+    if (!(continued && compactRules)) {
+      lines.push("- 응답 마지막 줄에 반드시 다음 중 하나만 붙이세요: [[CODEPET_DISCUSSION:CONTINUE]], [[CODEPET_DISCUSSION:AGREE]], [[CODEPET_DISCUSSION:PASS]], [[CODEPET_DISCUSSION:CONCLUDE]].");
+      lines.push("- 새 기여는 CONTINUE, 새 내용 없이 동의하면 AGREE, 할 말이 없으면 PASS, 충분한 최종 결론을 제시하면 CONCLUDE를 선택하세요.");
+    }
   }
   lines.push("");
   lines.push("=== 대화 ===");
@@ -125,4 +135,12 @@ function buildAgentPrompt({
   return lines.join("\n");
 }
 
-module.exports = { buildAgentPrompt, DEFAULT_MAX_MESSAGES };
+// Hash the exact full instructions with turn-varying values removed. This also
+// detects edits to personality/emoticon text after an application update.
+function promptRulesHash(context, additionalRules = "") {
+  const stable = buildAgentPrompt({ ...context, messages: [], maxMessages: 0, activeAgentIds: [],
+    broadcast: null, discussion: context.discussion ? { turn: 0 } : null, extraLines: [], continued: false, compactRules: false });
+  return createHash("sha256").update(stable).update(additionalRules).digest("hex");
+}
+
+module.exports = { buildAgentPrompt, promptRulesHash, DEFAULT_MAX_MESSAGES };

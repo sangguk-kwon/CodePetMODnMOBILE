@@ -1,5 +1,19 @@
 # Release notes / 릴리즈 노트
 
+## 1.2.4 — 2026-11-05
+
+### English
+
+- Add a selectable built-in Claude pet while preserving the default pet.
+- Include expressions and poses for idle, walking, waving, happiness, failure, waiting, working, reviewing and 16-direction looking.
+- The Claude sprite sheet is AI-generated from the existing character reference. Some look directions may still need visual refinement.
+
+### 한국어
+
+- 기존 기본 펫을 유지하면서 펫 선택에 내장 클로드 캐릭터를 추가했습니다.
+- 평소·이동·인사·기쁨·실패·대기·작업·검토 상태의 표정과 동작, 16방향 시선 프레임을 포함합니다.
+- 클로드 시트는 기존 캐릭터를 참고한 AI 생성 자산입니다. 일부 시선 방향은 실제 사용 후 추가 보정이 필요할 수 있습니다.
+
 ## 1.2.3 — 2026-11-05
 
 ### English

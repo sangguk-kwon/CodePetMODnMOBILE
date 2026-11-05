@@ -214,8 +214,8 @@ const SPRITE_ASSET = Object.freeze({
   mimeType: "image/webp",
   spriteVersionNumber: 2,
 });
-// 내장 클로드 펫입니다. scripts/generate-claude-pet.js로 build/claude-pet-source.png에서 생성합니다.
-const CLAUDE_SPRITE_PATH = path.join(__dirname, "pets", "claude", "spritesheet.webp");
+// 내장 클로드 펫입니다. scripts/generate-claude-pet.js로 build/claude-pet-hd에서 생성합니다.
+const CLAUDE_SPRITE_PATH = path.join(__dirname, "pets", "claude", "spritesheet.png");
 
 // Codex CLI가 설치한 펫 에셋 폴더입니다. 폴더마다 pet.json + spritesheet.webp가 들어 있고,
 // renderer가 실제 이미지 비율로 v1(8x9)과 v2(8x11)를 자동 판별합니다.
@@ -451,7 +451,8 @@ function createSpritePayload(pet) {
 
   try {
     const spriteBuffer = fs.readFileSync(pet.spritePath);
-    const spriteUrl = `data:${SPRITE_ASSET.mimeType};base64,${spriteBuffer.toString("base64")}`;
+    const mimeType = path.extname(pet.spritePath).toLowerCase() === ".png" ? "image/png" : SPRITE_ASSET.mimeType;
+    const spriteUrl = `data:${mimeType};base64,${spriteBuffer.toString("base64")}`;
 
     return {
       spriteUrl,

@@ -59,9 +59,11 @@ test("빈 애니메이션 프레임은 건너뛰고 빈 방향은 가장 가까�
 test("내장 클로드 펫은 시선 동작을 포함한 11행 규격으로 등록된다", () => {
   const fs = require("node:fs");
   const path = require("node:path");
-  const sprite = fs.readFileSync(path.join(__dirname, "..", "src", "pets", "claude", "spritesheet.webp"));
-  assert.equal(sprite.toString("ascii", 12, 16), "VP8X");
-  const width = sprite.readUIntLE(24, 3) + 1, height = sprite.readUIntLE(27, 3) + 1;
+  const sprite = fs.readFileSync(path.join(__dirname, "..", "src", "pets", "claude", "spritesheet.png"));
+  const { decodePng } = require("../scripts/pet-png");
+  const { width, height } = decodePng(sprite);
+  assert.equal(width, 3072);
+  assert.equal(height, 4576);
   assert.equal(detectSpriteRows({ width, height, spriteVersionNumber: 2 }), 11);
   assert.match(fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8"), /key: "builtin:claude", label: "클로드 \(내장\)"/);
 });

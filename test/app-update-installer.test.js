@@ -8,7 +8,7 @@ const { createHash } = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const { AppUpdateInstaller, acknowledgeUpdateStartup, checksumFor, fetchReleaseFile, portableTarget } = require("../src/app-update-installer");
 
-const root = "https://github.com/nokryong/CodePet/releases/download/v2.0.0/";
+const root = "https://github.com/sangguk-kwon/CodePetMODnMOBILE/releases/download/v2.0.0/";
 const bytes = Buffer.from("MZ verified portable update fixture");
 const hash = value => createHash("sha256").update(value).digest("hex");
 const release = { asset: { name: "CodePet-2.0.0.exe", url: `${root}CodePet-2.0.0.exe`, size: bytes.length }, checksumUrl: `${root}SHA256SUMS` };
@@ -72,6 +72,13 @@ test("download redirects only follow GitHub HTTPS asset hosts and stop redirect 
   }
   await assert.rejects(fetchReleaseFile("https://example.com/file", () => { throw new Error("must not fetch"); }), /Untrusted/);
   await assert.rejects(fetchReleaseFile(release.asset.url, async () => new Response(null, { status: 302, headers: { location: release.asset.url } })), /Too many/);
+});
+
+test("the installer rejects upstream releases before fetching any bytes", async () => {
+  let calls = 0;
+  await assert.rejects(fetchReleaseFile("https://github.com/nokryong/CodePet/releases/download/v2.0.0/CodePet-2.0.0.exe",
+    async () => { calls++; return new Response(bytes); }), /Untrusted release URL/);
+  assert.equal(calls, 0);
 });
 
 test("download verifies bytes on disk, prepares the helper once, then requests normal app shutdown", async t => {

@@ -1,8 +1,4 @@
-// Public distribution used by README and the AppImage update channel. The
-// development repository is private and cannot serve unauthenticated clients.
-const RELEASE_REPOSITORY = "nokryong/CodePet";
-const RELEASE_ROOT = `https://github.com/${RELEASE_REPOSITORY}/releases`;
-const RELEASE_API = `https://api.github.com/repos/${RELEASE_REPOSITORY}/releases/latest`;
+const { RELEASE_REPOSITORY, RELEASE_ROOT, RELEASE_API } = require("./release-channel");
 
 function parseVersion(value) {
   const match = String(value || "").match(/^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);

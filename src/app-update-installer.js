@@ -7,7 +7,7 @@ const { EventEmitter } = require("node:events");
 const { WINDOWS_UPDATE_SCRIPT, WINDOWS_UPDATE_BOOTSTRAP } = require("./windows-update-helper");
 
 const MAX_DOWNLOAD = 1024 * 1024 * 1024;
-const RELEASE_PREFIX = "https://github.com/nokryong/CodePet/releases/download/";
+const { RELEASE_PREFIX } = require("./release-channel");
 const DOWNLOAD_HOSTS = new Set(["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"]);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 

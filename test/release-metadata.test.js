@@ -28,6 +28,8 @@ function runMetadata(t, options = {}) {
   const candidate = git('rev-parse', 'HEAD');
   if (options.tag !== 'absent') git('tag', 'v1.2.1', options.tag === 'old' ? old : candidate);
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.1' }));
+  fs.mkdirSync(path.join(root, 'src'));
+  fs.copyFileSync(path.join(__dirname, '../src/release-channel.js'), path.join(root, 'src/release-channel.js'));
   const output = path.join(root, 'output'); fs.writeFileSync(output, '');
   const calls = path.join(root, 'calls'); fs.writeFileSync(calls, '');
   const mock = path.join(root, 'mock-gh.js');
@@ -52,23 +54,22 @@ if (args[0] === 'release' && args[1] === 'view') {
       TEST_NODE: portable(process.execPath), TEST_GH_SCRIPT: portable(mock), TEST_GH_CALLS: calls,
       TEST_GH_STATE: JSON.stringify({ draft: options.draft ?? 'true', target: options.target === 'old' ? old : candidate,
         lookupFails: options.lookupFails, listFails: options.listFails, listed: options.listed }),
-      GITHUB_REF: options.ref || 'refs/heads/main', GITHUB_REF_NAME: options.refName || 'main',
-      GITHUB_SHA: candidate, GITHUB_REPOSITORY: 'fixture/codepet', GITHUB_OUTPUT: portable(output) } });
+      GITHUB_REF: options.ref || 'refs/heads/develop', GITHUB_REF_NAME: options.refName || 'develop',
+      GITHUB_SHA: candidate, GITHUB_REPOSITORY: options.repository || require('../src/release-channel').RELEASE_REPOSITORY, GITHUB_OUTPUT: portable(output) } });
   assert.ifError(result.error);
   return { ...result, output: fs.readFileSync(output, 'utf8'), calls: fs.readFileSync(calls, 'utf8') };
 }
 
-test('published same-version release skips an advanced main without resolving its old target', t => {
+test('published same-version release skips an advanced develop without resolving its old target', t => {
   const result = runMetadata(t, { draft: 'false', tag: 'old', target: 'old' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.output, /^publish=false$/m);
   assert.doesNotMatch(result.calls, /targetCommitish/);
 });
 
-test('published same-version release skips a matching version tag event', t => {
-  // isDraft=false is the existing skip criterion; prerelease status must not change it.
-  const result = runMetadata(t, { draft: 'false', tag: 'old', target: 'old', ref: 'refs/tags/v1.2.1', refName: 'v1.2.1' });
-  assert.equal(result.status, 0, result.stderr);
+test('tag events cannot publish the fork release', t => {
+  const result = runMetadata(t, { ref: 'refs/tags/v1.2.1', refName: 'v1.2.1' });
+  assert.notEqual(result.status, 0);
   assert.doesNotMatch(result.output, /publish=true/);
 });
 
@@ -85,6 +86,8 @@ for (const options of [
   { lookupFails: true, listed: true }, { lookupFails: true, listFails: true },
   { draft: 'false', tag: 'old', ref: 'refs/tags/v1.2.2', refName: 'v1.2.2' },
   { draft: 'invalid' },
+  { ref: 'refs/heads/main', refName: 'main' },
+  { repository: 'nokryong/CodePet' },
 ]) {
   test('metadata fails closed: ' + JSON.stringify(options), t => {
     const result = runMetadata(t, options);

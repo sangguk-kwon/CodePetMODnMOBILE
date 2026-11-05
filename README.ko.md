@@ -3,11 +3,12 @@
 > **CodePetMODnMOBILE 개조판:** Windows 개선판과 설치형 Android 앱을 `develop`에서 계획하고 있습니다.
 > [개발 계획](https://github.com/sangguk-kwon/CodePetMODnMOBILE/blob/develop/docs/README.md)과
 > [후속 개발 지침](https://github.com/sangguk-kwon/CodePetMODnMOBILE/blob/develop/AGENTS.md)을 먼저 확인하세요.
-> 아직 구현 전이며, 아래 원본 사용 안내와 다운로드 링크는 원본 CodePet을 설명합니다.
+> 구현·검증 현황은 [STATUS](docs/STATUS.ko.md)에서 확인하세요. Android는 아직 계획 단계입니다.
+> 개조판 빌드는 이 포크의 릴리스를 업데이트 대상으로 사용합니다. 원본 출처는 아래에 표시합니다.
 
 [English](README.md) | **한국어**
 
-[다운로드](https://github.com/nokryong/CodePet/releases/latest) · [릴리즈 노트](CHANGELOG.md) · [AppImage 카탈로그](https://appimage.github.io/CodePet/)
+[포크 릴리스](https://github.com/sangguk-kwon/CodePetMODnMOBILE/releases) · [릴리즈 노트](CHANGELOG.md) · [원본 CodePet](https://github.com/nokryong/CodePet)
 
 Codex, Antigravity(AGY), Claude Code, Grok을 위한 데스크톱 펫입니다. 에이전트의 작업 상태와 남은 한도를 확인하고, 계정을 전환하거나 단체 채팅방에서 함께 대화할 수 있습니다.
 
@@ -20,6 +21,8 @@ Windows, Linux, macOS를 지원합니다.
 펫이나 트레이 아이콘을 우클릭하면 설정, 계정 관리, **에이전트 채팅방…**을 열 수 있습니다.
 
 Windows 포터블 버전은 설정의 업데이트 버튼을 누르면 새 버전을 다운로드하고 적용한 뒤 자동으로 재실행합니다. Linux·macOS에서는 같은 버튼으로 새 버전을 다운로드합니다.
+
+업데이트 대상은 체크섬 검증과 AppImage 갱신 정보를 포함해 **sangguk-kwon/CodePetMODnMOBILE**입니다. 포크의 정식 릴리스가 게시되기 전에는 업데이트를 조회할 수 없는 상태로 표시하며 원본으로 대체하지 않습니다. 기존 원본 앱은 포크 빌드를 한 번 직접 설치해야 채널이 바뀝니다. 이후 업데이트는 현재보다 높은 버전이어야 제공됩니다. 릴리스는 `develop`에서 수동 실행하며, 원본 동기화용 `main`이나 태그를 푸시해도 자동 게시하지 않습니다.
 
 ## 주요 기능
 

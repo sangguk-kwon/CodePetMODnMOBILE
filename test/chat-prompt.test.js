@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildAgentPrompt } = require("../src/chat/chat-prompt");
+const { buildAgentPrompt, promptRulesHash } = require("../src/chat/chat-prompt");
 
 const AGENTS = [
   { id: "claude", name: "Claude", aliases: ["claude"] },
@@ -176,4 +176,34 @@ test("인용 답장은 대상 발언과 발췌를 사용자 메시지 앞에 표
   });
 
   assert.match(prompt, /\[User\] \(인용: @codex "첫 줄 둘째 줄"\) 이 의견을 검토해줘/);
+});
+
+test("compact continuation preserves dynamic state and messages without repeating personality or emoticon rules", () => {
+  const context = { agent: AGENTS[0], agents: AGENTS, messages: [message("user", "이어가자", "user")],
+    continued: true, compactRules: true, permissionMode: "workspace-write", activeAgentIds: ["codex"],
+    broadcast: { parallel: true }, discussion: { turn: 7 } };
+  const compact = buildAgentPrompt(context);
+  assert.match(compact, /세션 시작 때 받은 규칙을 그대로 따르세요/);
+  assert.match(compact, /현재 함께 작업 중인 참가자: @codex/);
+  assert.match(compact, /병렬 응답/);
+  assert.match(compact, /자율 토론 7턴/);
+  assert.match(compact, /\[User\] 이어가자/);
+  assert.doesNotMatch(compact, /이모티콘 의미 사전|친한 동료|규칙:|CODEPET_DISCUSSION:CONTINUE/);
+  assert.match(buildAgentPrompt({ ...context, continued: false }), /이모티콘 의미 사전/);
+  const alone = buildAgentPrompt({ ...context, activeAgentIds: [], broadcast: null, discussion: null });
+  assert.match(alone, /참가자: 없음/);
+  assert.match(alone, /일반 응답/);
+});
+
+test("rule fingerprints ignore per-turn data but refresh for permissions, roster, personality, discussion and instruction edits", () => {
+  const context = { agent: AGENTS[0], agents: AGENTS, messages: [], permissionMode: "chat" };
+  const base = promptRulesHash(context, "trace-rules-v1");
+  assert.equal(base, promptRulesHash({ ...context, messages: [message("user", "changed", "user")],
+    activeAgentIds: ["codex"], broadcast: { parallel: true }, extraLines: ["attachment"], continued: true }, "trace-rules-v1"));
+  for (const patch of [
+    { permissionMode: "workspace-write" }, { workMode: true }, { mentionsEnabled: false },
+    { agents: [AGENTS[0]] }, { agent: { ...AGENTS[0], mention: "reviewer" } }, { discussion: { turn: 1 } },
+  ]) assert.notEqual(base, promptRulesHash({ ...context, ...patch }, "trace-rules-v1"));
+  assert.equal(promptRulesHash({ ...context, discussion: { turn: 1 } }), promptRulesHash({ ...context, discussion: { turn: 8 } }));
+  assert.notEqual(base, promptRulesHash(context, "trace-rules-v2"));
 });

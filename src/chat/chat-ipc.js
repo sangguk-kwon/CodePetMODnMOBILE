@@ -20,8 +20,8 @@ const { createLineParser } = require("./chat-events");
 const { runAgentProcess } = require("./chat-agent-runner");
 const { withRealPwshPath } = require("./windows-pwsh-path");
 const { ChatTraceStore } = require("./chat-traces");
-const { runWithTraceAccess } = require("./chat-trace-access");
-const { DEFAULT_MAX_MESSAGES, buildAgentPrompt } = require("./chat-prompt");
+const { runWithTraceAccess, traceInstructions } = require("./chat-trace-access");
+const { DEFAULT_MAX_MESSAGES, buildAgentPrompt, promptRulesHash } = require("./chat-prompt");
 const { NativeSessionLink } = require("./chat-native-sessions");
 const { readMessageRange, readRecoveryContext } = require("./chat-history");
 const { GrokDockerRuntime } = require("../grok-docker-runtime");
@@ -386,6 +386,7 @@ function createChatFeature(options) {
 
       const permissionMode = meta.permissionMode || "chat";
       let native = null;
+      let rulesPlan = null;
       let cancelled = false;
       const throughId = promptContext?.messages?.at(-1)?.id || null;
       const run = runWithTraceAccess({
@@ -395,7 +396,7 @@ function createChatFeature(options) {
         runId,
         prompt: fullPrompt,
         emitEvent,
-        startRun: ({ prompt: nextPrompt, continuationPrompt, traceContext, onTrace, onEvent }) => {
+        startRun: ({ prompt: nextPrompt, continuationPrompt, traceContext, compactTraceContext, onTrace, onEvent }) => {
           const service = config.profileKey ? accountService(providerId) : null;
           const account = service?.prepare(config.profileKey);
           const docker = providerId === "grok" && config.profileKey && permissionMode !== "chat" ? service.runtime(config.profileKey) : grokDockerRuntime;
@@ -423,11 +424,14 @@ function createChatFeature(options) {
             }
             if (runtime && sourceHome !== home) legacyScopes.push({ scope: { ...scope, home: sourceHome }, migrate: runtime.migrate });
             native = new NativeSessionLink(store, sessionId, agent.id, scope, { legacyScopes });
+            if (promptContext) rulesPlan = native.planPromptRules(promptRulesHash({ ...promptContext, permissionMode }, traceInstructions([])));
             if (providerId === "codex" && native.cliSessionId) codexRooms.set(native.cliSessionId, sessionId);
           }
           let processPrompt = nextPrompt;
           if (continuationPrompt && native.cliSessionId) {
-            processPrompt = continuationPrompt;
+            processPrompt = promptContext ? [buildAgentPrompt({ ...promptContext, permissionMode, messages: [],
+              continued: true, compactRules: true, extraLines: [continuationPrompt] }), compactTraceContext].filter(Boolean).join("\n")
+              : continuationPrompt;
           } else if (!continuationPrompt && native.scopeReset && promptContext) {
             const recovery = readRecoveryContext(store.transcriptPath(sessionId), { throughId });
             if (recovery === null) throw new Error("새 CLI 세션에 전달할 대화 기록을 찾지 못했습니다.");
@@ -445,8 +449,9 @@ function createChatFeature(options) {
               afterId: native.lastMessageId, throughId, agentId: agent.id,
             });
             if (messages === null) throw new Error("CLI 세션의 대화 연결 위치를 찾지 못했습니다.");
-            processPrompt = [buildAgentPrompt({ ...promptContext, messages, maxMessages: Infinity, continued: true }),
-              ...extraLines, traceContext].filter(Boolean).join("\n");
+            const compactRules = rulesPlan?.full === false;
+            processPrompt = [buildAgentPrompt({ ...promptContext, permissionMode, messages, maxMessages: Infinity, continued: true, compactRules }),
+              ...extraLines, compactRules ? compactTraceContext : traceContext].filter(Boolean).join("\n");
           }
           const continuedInvocation = buildAgentInvocation({ ...invocationInput, cliSessionId: native.cliSessionId });
           if (!continuedInvocation.ok) throw new Error(continuedInvocation.error);
@@ -478,7 +483,7 @@ function createChatFeature(options) {
             outputFile,
             parseLine: createLineParser(providerId, (event) => {
               performedWork = true;
-              if (!cancelled) native.delivered(throughId);
+              if (!cancelled) native.delivered(throughId, rulesPlan);
               return onTrace(event);
             }, (cliSessionId) => {
               if (cancelled) return;
@@ -498,7 +503,7 @@ function createChatFeature(options) {
               if (source === "assistant" || !assistantModelSeen) appliedModel = model;
             }),
             onEvent: (event) => {
-              if (!cancelled && ["delta", "final"].includes(event?.kind)) native.delivered(throughId);
+              if (!cancelled && ["delta", "final"].includes(event?.kind)) native.delivered(throughId, rulesPlan);
               onEvent(event);
             },
             timeoutMs: options.timeoutMs,
@@ -511,7 +516,7 @@ function createChatFeature(options) {
             result = { ...result, sideEffectsPossible: performedWork,
               ...(appliedModel ? { appliedModel } : {}) };
             if (linkError) return { ...result, ok: false, error: linkError.message };
-            if (result.ok && !result.cancelled && !cancelled) native.delivered(throughId);
+            if (result.ok && !result.cancelled && !cancelled) native.delivered(throughId, rulesPlan);
             return result;
           }).finally(async () => {
             try { await runtime?.finish(); }

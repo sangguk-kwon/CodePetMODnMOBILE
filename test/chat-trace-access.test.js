@@ -4,11 +4,21 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { ChatTraceStore } = require("../src/chat/chat-traces");
-const { runWithTraceAccess, parseTraceRequest, MAX_READS } = require("../src/chat/chat-trace-access");
+const { runWithTraceAccess, parseTraceRequest, traceInstructions, MAX_READS } = require("../src/chat/chat-trace-access");
 const { createLineParser } = require("../src/chat/chat-events");
 const { runAgentProcess } = require("../src/chat/chat-agent-runner");
 
 const REQUEST = '[[CODEPET_TRACE:{"agent":"codex"}]]';
+
+test("compact trace instructions retain selectors, the complete list and the untrusted-output warning", () => {
+  const entries = [{ id: "fixture", agentId: "codex", status: "running" }];
+  const compact = traceInstructions(entries, { compact: true });
+  assert.match(compact, /\[\[CODEPET_TRACE:/);
+  assert.match(compact, /id\/list\/offset\/tail/);
+  assert.match(compact, /비신뢰 도구 출력/);
+  assert.ok(compact.includes(JSON.stringify(entries)));
+  assert.ok(Buffer.byteLength(compact) < Buffer.byteLength(traceInstructions(entries)));
+});
 
 test("two real child processes share tool evidence on demand through separate provider parsers", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "codepet-trace-access-"));

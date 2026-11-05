@@ -29,6 +29,9 @@ class NativeSessionLink {
     this.cliSessionId = (previous?.scope === this.scope || legacy) && UUID.test(previous?.cliSessionId) ? previous.cliSessionId : null;
     this.scopeReset = Boolean(previous?.cliSessionId && !this.cliSessionId);
     this.lastMessageId = this.cliSessionId ? previous.lastMessageId || null : null;
+    this.promptRulesHash = this.cliSessionId && /^[a-f0-9]{64}$/.test(previous?.promptRulesHash) ? previous.promptRulesHash : null;
+    this.promptTurnCount = this.cliSessionId && Number.isSafeInteger(previous?.promptTurnCount) && previous.promptTurnCount >= 0
+      ? previous.promptTurnCount : 0;
     this.write(true);
   }
 
@@ -50,7 +53,8 @@ class NativeSessionLink {
     // A cancelled/deleted run cannot overwrite a newer run's session cursor.
     if (!begin && links[this.agentId]?.token !== this.token) return false;
     links[this.agentId] = { scope: this.scope, token: this.token,
-      cliSessionId: this.cliSessionId, lastMessageId: this.lastMessageId };
+      cliSessionId: this.cliSessionId, lastMessageId: this.lastMessageId,
+      promptRulesHash: this.promptRulesHash, promptTurnCount: this.promptTurnCount };
     writeJsonAtomic(this.file, links);
     return true;
   }
@@ -64,9 +68,20 @@ class NativeSessionLink {
     this.write();
   }
 
-  delivered(messageId) {
+  planPromptRules(hash) {
+    const turn = this.promptTurnCount + 1;
+    return { hash, turn, full: !this.cliSessionId || this.scopeReset || hash !== this.promptRulesHash || turn % 20 === 0 };
+  }
+
+  delivered(messageId, promptRules = null) {
     if (!this.cliSessionId || !messageId) return;
     this.lastMessageId = messageId;
+    // Tool/delta/final events and trace lookups may all acknowledge the same turn.
+    // A prepared-but-never-delivered prompt must not advance persisted state.
+    if (promptRules && promptRules.turn > this.promptTurnCount) {
+      this.promptRulesHash = promptRules.hash;
+      this.promptTurnCount = promptRules.turn;
+    }
     this.write();
   }
 }

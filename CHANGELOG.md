@@ -1,5 +1,19 @@
 # Release notes / 릴리즈 노트
 
+## 1.2.5 — 2026-11-05
+
+### English
+
+- Replace the built-in Claude pet with higher-detail, lossless PNG artwork.
+- Isolate and pad animation frames to remove stray fragments from adjacent rows.
+- Preserve all nine animation states and sixteen look directions. Some look directions may still need visual refinement.
+
+### 한국어
+
+- 내장 클로드 펫을 디테일을 높인 무손실 PNG 그림으로 교체했습니다.
+- 애니메이션 프레임을 개별 분리하고 투명 여백을 넣어 위쪽에 다른 칸의 그림 조각이 나타나는 문제를 수정했습니다.
+- 기존 9개 애니메이션 상태와 16방향 시선을 유지합니다. 일부 시선 방향은 실사용 후 추가 보정이 필요할 수 있습니다.
+
 ## 1.2.4 — 2026-11-05
 
 ### English

@@ -30,7 +30,11 @@
   버전 관련 릴리스 검사도 15개 통과했다. 로그: 저장소 밖 `dev-tools/logs/codepet-v125-tests.log`.
 - Windows x64 portable 빌드 및 패키지 실행 검사 통과: 준비 상태·IPC·버전 `1.2.5`·정상 종료 확인.
   빌드 로그: 저장소 밖 `dev-tools/logs/codepet-v125-build.log`.
-- 게시 대상은 포크의 `v1.2.5` 릴리스이며 exe와 `SHA256SUMS`를 제공한다. 실제 게시 상태와 파일은 릴리스 페이지를 기준으로 확인한다.
+- PR #10을 포크 `develop`에 병합했고, `2ffd9fb5ce5ebde5f7499691c89c161e62e04a06`에 `v1.2.5` 태그를 만들었다.
+- [v1.2.5 릴리스](https://github.com/sangguk-kwon/CodePetMODnMOBILE/releases/tag/v1.2.5)를 정식 최신 버전으로 게시했다. exe와 `SHA256SUMS`를 제공한다.
+  exe 크기: 170,563,404 bytes. 다시 다운로드한 파일의 SHA-256도 로컬과 일치했다:
+  `d14c20003dd2b98c99c32dfdfaf92a128739fad2c36d7927c3c43900a55edd62`.
+- 실제 앱 업데이트 검사 모듈로 포크를 조회해 `1.2.4`에서 `available` 및 exe/체크섬 URL, `1.2.5`에서 `up-to-date`를 확인했다.
   실제 설치된 앱의 업데이트와 펫 시선 정확도는 사용자 확인이 필요하다.
 - 모든 원격 변경은 사용자 포크 `sangguk-kwon/CodePetMODnMOBILE` 안에서만 수행한다.
 

@@ -125,7 +125,7 @@ test("Windows helper replaces and restarts a native EXE, or restores it after fa
       const { AppUpdateInstaller } = require(${JSON.stringify(require.resolve("../src/app-update-installer"))});
       const bytes = fs.readFileSync(${JSON.stringify(payload)});
       const checksum = createHash('sha256').update(bytes).digest('hex');
-      const root = 'https://github.com/nokryong/CodePet/releases/download/v9.9.9/';
+      const root = 'https://github.com/sangguk-kwon/CodePetMODnMOBILE/releases/download/v9.9.9/';
       const updater = new AppUpdateInstaller({
         app: { isPackaged: true, quit: () => process.exit(0) },
         fetchImpl: async url => new Response(url.endsWith('SHA256SUMS') ? checksum + '  CodePet-9.9.9.exe\\n' : bytes),

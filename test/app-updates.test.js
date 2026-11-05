@@ -9,6 +9,22 @@ function release(version = "1.0.13") {
       return { name, browser_download_url: `${root}/download/v${version}/${name}` };
     }) };
 }
+
+test("fork update lookup never offers upstream assets and needs a published stable release", async () => {
+  assert.equal(RELEASE_REPOSITORY, "sangguk-kwon/CodePetMODnMOBILE");
+  const value = release();
+  for (const asset of value.assets) asset.browser_download_url = asset.browser_download_url.replace(RELEASE_REPOSITORY, "nokryong/CodePet");
+  const checker = new AppUpdateChecker({ currentVersion: "1.0.0", platform: "win32", arch: "x64", fetchImpl: async url => {
+    assert.equal(url, "https://api.github.com/repos/sangguk-kwon/CodePetMODnMOBILE/releases/latest");
+    return response(value);
+  } });
+  const result = await checker.check();
+  assert.equal(result.asset, null);
+  assert.equal(result.checksumUrl, undefined);
+  assert.ok(result.downloadUrl.startsWith(root + "/tag/"));
+  const empty = new AppUpdateChecker({ currentVersion: "1.0.0", fetchImpl: async () => new Response(null, { status: 404 }) });
+  assert.equal((await empty.check()).status, "unavailable");
+});
 const response = value => ({ ok: true, json: async () => value });
 
 test("numeric release comparison detects newer stable versions without downgrade/prerelease offers", () => {

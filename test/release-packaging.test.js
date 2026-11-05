@@ -38,7 +38,8 @@ test("build script selects Linux on Linux and accepts an explicit Linux target",
 });
 
 test("release workflow builds three native runners and uploads all three packages", () => {
-  assert.match(releaseWorkflow, /push:[\s\S]*branches:[\s\S]*- main/);
+  assert.match(releaseWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(releaseWorkflow.split("permissions:")[0], /push:|tags:|branches:/);
   assert.match(releaseWorkflow, /windows-latest[\s\S]*artifacts\/\*\.exe/);
   assert.match(releaseWorkflow, /ubuntu-latest[\s\S]*artifacts\/\*\.AppImage\*/);
   assert.match(releaseWorkflow, /macos-latest[\s\S]*artifacts\/\*\.dmg/);
@@ -53,8 +54,10 @@ test("release workflow builds three native runners and uploads all three package
   );
   assert.match(
     releaseWorkflow,
-    /gh-releases-zsync\|nokryong\|CodePet\|latest\|CodePet-\*-x86_64\.AppImage\.zsync/
+    /require\("\.\/src\/release-channel"\)\.APPIMAGE_UPDATE_INFO/
   );
+  assert.match(releaseWorkflow, /-u "\$update_channel"/);
+  assert.match(releaseWorkflow, /test "\$update_info" = "\$update_channel"/);
   assert.match(releaseWorkflow, /appimagetool-x86_64\.AppImage/);
   assert.match(releaseWorkflow, /appimagetool\/releases\/download\/1\.9\.1/);
   assert.match(releaseWorkflow, /ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0/);

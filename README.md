@@ -3,11 +3,12 @@
 > **CodePetMODnMOBILE fork:** Windows improvements and a native Android companion are being planned on `develop`.
 > Start with the [development plan](https://github.com/sangguk-kwon/CodePetMODnMOBILE/blob/develop/docs/README.md)
 > and [contributor/agent instructions](https://github.com/sangguk-kwon/CodePetMODnMOBILE/blob/develop/AGENTS.md).
-> These are planned features; the upstream documentation and downloads below describe the original CodePet.
+> Implementation and verification status is tracked in [STATUS](docs/STATUS.ko.md). Android is still planned.
+> Mod builds use this fork's releases for updates; upstream CodePet is credited below.
 
 **English** | [한국어](README.ko.md)
 
-[Download](https://github.com/nokryong/CodePet/releases/latest) · [Release notes](CHANGELOG.md) · [AppImage catalog](https://appimage.github.io/CodePet/)
+[Fork releases](https://github.com/sangguk-kwon/CodePetMODnMOBILE/releases) · [Release notes](CHANGELOG.md) · [Upstream CodePet](https://github.com/nokryong/CodePet)
 
 A desktop pet for Codex, Antigravity (AGY), Claude Code, and Grok. Follow agent activity, check remaining usage limits, switch accounts, and talk to installed agents in a shared chat room.
 
@@ -20,6 +21,10 @@ Download the package for your platform: `.exe` for Windows, `.AppImage` for Linu
 Right-click the pet or tray icon to open Settings, manage accounts, or launch **Agent chat room** (`에이전트 채팅방…`).
 
 On Windows portable builds, the update button in Settings downloads and applies the new version, then restarts CodePet. On Linux and macOS, the same button opens the new version's download.
+
+The update channel is **sangguk-kwon/CodePetMODnMOBILE**, including checksum verification and AppImage update metadata. Until a stable fork release is published, checks report that no update is available to fetch; they do not fall back to upstream. Install a fork build manually once to switch an existing upstream installation. Version numbers must increase for later updates to be offered. This branch's release workflow only accepts manual dispatches from `develop`.
+
+Before syncing the upstream-tracking `main` or pushing upstream tags, separately disable its legacy release workflow: workflow changes on `develop` do not change the original workflow still present on `main`. Repository Actions settings have not been changed by this implementation.
 
 ## Features
 

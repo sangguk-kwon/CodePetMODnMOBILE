@@ -535,7 +535,8 @@ class ChatRoom extends EventEmitter {
       }
       if (generation !== this.generation || result?.cancelled) return;
       emitEvent({ kind: "run-end", ok: Boolean(result?.ok) });
-      if (!result?.approvalRequired || result?.text || result?.sideEffectsPossible || agent.autoApprove || approvedRetry) break;
+      // Codex approvals are answered on the active App Server request, never by replaying with bypass flags.
+      if ((agent.providerId || agent.id) === "codex" || !result?.approvalRequired || result?.text || result?.sideEffectsPossible || agent.autoApprove || approvedRetry) break;
       const approved = await this.requestApproval(agent, result.approval);
       if (generation !== this.generation) return;
       if (!approved) {
@@ -558,6 +559,7 @@ class ChatRoom extends EventEmitter {
       version: agent.version || "",
       ...(result?.appliedModel ? { appliedModel: result.appliedModel } : {}),
       ...(result?.appliedEffort ? { appliedEffort: result.appliedEffort } : {}),
+      ...(result?.appliedPermissions ? { appliedPermissions: result.appliedPermissions } : {}),
     };
     if (!result?.ok) {
       // 진단 기록에 자동 승인/재시도 맥락을 더해 transcript에 함께 저장합니다.

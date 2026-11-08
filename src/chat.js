@@ -2206,11 +2206,22 @@ function applyFullState(full) {
     for (const agentId of full.session.typing || []) typingAgents.add(agentId);
     pendingAttachments = full.session.pendingAttachments || [];
     renderAllMessages(full.session.messages, full.session.history);
+    // Restore only live call approvals when a window/session is reopened.
+    for (let index = approvalQueue.length - 1; index >= 0; index--) {
+      if (approvalQueue[index].sessionId === activeSessionId && approvalQueue[index].retryScope === "call") approvalQueue.splice(index, 1);
+    }
+    approvalQueue.push(...(full.session.pendingCallApprovals || []));
     scrollToBottom(true);
     historyScrollTop = chatScroll.scrollTop;
   } else if (Object.hasOwn(full, "activeSessionId") && !full.activeSessionId) {
     turnState = normalizeTurnState(null);
   }
+  if (activeApproval?.sessionId !== activeSessionId) {
+    if (activeApproval) approvalQueue.unshift(activeApproval);
+    activeApproval = null;
+    approvalBackdrop.hidden = true;
+  }
+  showNextApproval();
 
   if (full.error) {
     storeWarning.textContent = `저장소 문제: ${full.error} — 대화가 저장되지 않을 수 있습니다.`;
@@ -2292,25 +2303,52 @@ window.chatApi.onProvidersChanged(({ sessionId, providers: nextProviders, diagno
   else if (localStorage.getItem(DOCTOR_SEEN_KEY) !== "true") openDoctor({ firstRun: true });
 });
 function showNextApproval() {
-  if (activeApproval || approvalQueue.length === 0) return;
-  activeApproval = approvalQueue.shift();
+  if (activeApproval) return;
+  const index = approvalQueue.findIndex(entry => entry.sessionId === activeSessionId && (!entry.expiresAt || entry.expiresAt > Date.now()));
+  if (index < 0) return;
+  activeApproval = approvalQueue.splice(index, 1)[0];
   const agent = agentById(activeApproval.agentId);
   approvalSummary.textContent = `${agent?.name || activeApproval.agentId}: ${activeApproval.summary}`;
-  approvalDetail.textContent = activeApproval.detail || "세부 정보가 없습니다.";
+  approvalDetail.textContent = [activeApproval.detail || "세부 정보가 없습니다.",
+    activeApproval.expiresAt ? `승인 유효시간: ${new Date(activeApproval.expiresAt).toLocaleTimeString()}` : ""].filter(Boolean).join("\n\n");
+  approvalApprove.textContent = activeApproval.retryScope === "call" ? "이번 요청 허용" : "이 턴 승인 후 다시 실행";
+  document.querySelector(".approval-warning").textContent = activeApproval.retryScope === "call"
+    ? "이번 요청에만 응답하고 같은 실행을 이어갑니다. 세션 허용 규칙을 저장하거나 샌드박스를 통째로 해제하지 않습니다."
+    : "이 실행 경로는 개별 명령 대신 이 턴 전체를 자동 승인 모드로 다시 실행합니다.";
   approvalBackdrop.hidden = false;
 }
 async function answerApproval(decision) {
-  if (!activeApproval) return;
+  if (!activeApproval || approvalApprove.disabled) return;
   const current = activeApproval;
   activeApproval = null;
   approvalBackdrop.hidden = true;
-  await call(window.chatApi.approvalRespond(current.sessionId, current.approvalId, decision));
-  showNextApproval();
+  approvalApprove.disabled = true;
+  approvalDeny.disabled = true;
+  try { await call(window.chatApi.approvalRespond(current.sessionId, current.approvalId, decision)); }
+  finally {
+    approvalApprove.disabled = false;
+    approvalDeny.disabled = false;
+    showNextApproval();
+  }
 }
 approvalApprove.addEventListener("click", () => answerApproval("approve"));
 approvalDeny.addEventListener("click", () => answerApproval("deny"));
 window.chatApi.onApprovalRequest((payload) => {
+  if (approvalQueue.some(entry => entry.approvalId === payload.approvalId) || activeApproval?.approvalId === payload.approvalId) return;
   approvalQueue.push(payload);
+  showNextApproval();
+});
+window.chatApi.onApprovalResolved(({ sessionId, approvalId, reason }) => {
+  for (let index = approvalQueue.length - 1; index >= 0; index--) {
+    if (approvalQueue[index].sessionId === sessionId && approvalQueue[index].approvalId === approvalId) approvalQueue.splice(index, 1);
+  }
+  if (activeApproval?.sessionId === sessionId && activeApproval.approvalId === approvalId) {
+    activeApproval = null;
+    approvalBackdrop.hidden = true;
+  }
+  if (sessionId === activeSessionId && ["expired", "settings-changed"].includes(reason)) {
+    flashNotice(reason === "expired" ? "승인 유효시간이 지나 요청을 거부했습니다." : "권한 또는 계정 설정이 바뀌어 이전 승인 요청을 거부했습니다.");
+  }
   showNextApproval();
 });
 window.chatApi.onAppearance(applyAppearance);

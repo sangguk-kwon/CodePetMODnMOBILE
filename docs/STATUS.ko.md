@@ -4,25 +4,36 @@
 
 ## 현재 상태
 
-**Windows 최신 배포는 v1.2.5이며 사용자 요청으로 v1.2.6을 준비 중이다. 진단/계획(PR #13/#12), Codex 호출별 승인(PR #14), 공통 도구 설정·규칙 저장(PR #15)은 develop에 병합됐다. Claude 내장 도구 제외와 Codex가 요청한 승인에 대한 정확 일치 규칙을 지원한다. Claude 호출별 승인·MCP 연결·실행 환경 별도 편집·실제 구독 검증은 남아 있으며 P1/P2/P3 전체 완료가 아니다.**
+**Windows 최신 배포는 v1.2.6이다. 진단/계획(PR #13/#12), Codex 호출별 승인(PR #14), 공통 도구 설정·규칙 저장(PR #15)과 버전 변경(PR #16)을 develop에 병합하고 이 Windows PC에서 빌드해 사용자 포크에 게시했다. Claude 내장 도구 제외와 Codex가 요청한 승인에 대한 정확 일치 규칙을 지원한다. Claude 호출별 승인·MCP 연결·실행 환경 별도 편집·실제 구독 검증은 남아 있으며 P1/P2/P3 전체 완료가 아니다.**
 
 | 항목 | 상태 | 근거/메모 |
 |---|---|---|
 | 공개 Fork 확보 | 확인 | `sangguk-kwon/CodePetMODnMOBILE`, 원본 `nokryong/CodePet` |
 | 원본 기준선 | 소스 기준 확인 | v1.2.2, `ca3d5c1ce2d7f96e904deb68ac88c660b8251371` |
 | 개발 지침·구조·로드맵 | 작성 | 이 커밋의 AGENTS와 docs 문서 |
-| 기존 테스트/앱 빌드 | v1.2.5 검증 완료 | 2026-11-05 Node 22.23.4: 763 통과, 실패 0, skip 1. Windows 패키지 준비·IPC·정상 종료 확인. 오늘 재실행한 결과는 아님 |
+| 기존 테스트/앱 빌드 | v1.2.6 검증 완료 | 2026-11-08 Node 22.23.4: 791 통과, 실패 0, skip 1. Windows 패키지 준비·버전·IPC·정상 종료 확인 |
 | Claude/Codex 실제 연동 | 변경된 실행부에서 제한된 조합 확인 | Claude 보고: createChatFeature + 실제 CLI로 모델 변경 후 동일 세션/스레드와 코드워드 보존. 추론 실제 적용은 미검증 |
 | Chrome/Codex 브라우저 | P1 예정 | 기존 연결 재사용 선호만 확정 |
 | PC 새 기능 | 일부 구현·배포 | 모델·추론 연속성, 날씨 버튼 겹침 수정, 반복 지침 축소. 지원 조합 확대·호출별 승인·브라우저 검증은 남음 |
-| 도구 설정·호출별 승인 | 진단·Codex 승인·공통 설정 PR #13/#14/#15 병합 | Claude 도구 제외·Codex 승인 규칙·범위별 저장. v1.2.6 준비 중. 실제 구독 공급자 미검증. Claude 승인·MCP/브라우저·환경 편집 후속 |
+| 도구 설정·호출별 승인 | 진단·Codex 승인·공통 설정 v1.2.6 배포 | Claude 도구 제외·Codex 승인 규칙·범위별 저장. 실제 구독 공급자 미검증. Claude 승인·MCP/브라우저·환경 편집 후속 |
 | 실시간 작업 진행 보고 | 계획 등록, 미구현 | Phase 1 이벤트 기반 누적 이력, Phase 2 공개 자연어 보고. Claude/Codex 공통 UI 필수. 기존 작업 순서 유지 |
 | Android 프로젝트/APK | 미구현 | Kotlin/Compose 방향만 문서화 |
 | 원격 서버·페어링·알림 | 미구현 | 서비스 배포/포트 공개/기기 연결 없음 |
-| 개조판 업데이트/릴리스 | Windows v1.2.5 게시 완료 | 포크 조회·다운로드 체크섬·패키지 실행 검증 완료. 설치된 앱의 업데이트 교체와 펫 시선 정확도는 별도 확인 필요 |
+| 개조판 업데이트/릴리스 | Windows v1.2.6 게시 완료 | 포크 조회·재다운로드 체크섬·패키지 실행 검증 완료. 설치된 앱의 실제 업데이트 교체·승인 실사용은 별도 확인 필요 |
 
 단계별 완료 여부는 아래 기록의 검증 범위에 따른다. 위 배포 사실만으로 PC 전체 흐름이나
 Android 개발 완료를 뜻하지 않는다. 과거 기록의 미검증 항목은 이후 기록과 함께 읽는다.
+
+## 2026-11-08 / v1.2.6 배포 검증 / docs/release-1.2.6-verification
+
+- 사용자 지시로 Windows x64 portable을 이 PC에서 로컬 빌드해 [v1.2.6 릴리스](https://github.com/sangguk-kwon/CodePetMODnMOBILE/releases/tag/v1.2.6)에 게시했다. GitHub Actions로 빌드하지 않았다. 원본 저장소에는 원격 변경을 만들지 않았다.
+- 버전 변경 [PR #16](https://github.com/sangguk-kwon/CodePetMODnMOBILE/pull/16)을 develop에 병합하고 커밋 `d06fd732916be43e31254c2decb239c4daacc60d`에서 빌드했다. 테스트한 PR head와 병합 커밋의 트리 차이가 없음을 확인했다. `v1.2.6` 태그도 같은 커밋을 가리킨다.
+- Node `22.23.4`, `npm ci` 후 전체 테스트 **791 통과, 실패 0, skip 1**. `npm run dist -- --win` 및 자동 패키지 준비·버전 `1.2.6`·IPC·정상 종료 검사 통과. 로그는 저장소 밖 `dev-tools/logs/codepet-v126-tests.log`, `codepet-v126-build.log`.
+- 패키지의 app.asar에서 버전과 새 도구 설정·Codex 승인·preload·채팅 UI 모듈이 빌드 소스와 일치함을 확인했다. 설치 시 npm audit가 보고한 `@electron/get` 하위 undici 다운로드 도구는 app.asar에 포함되지 않음을 확인했다. 보안 경고 전체 해결이나 내장 Electron/Node 보안 검증 완료를 뜻하지 않는다.
+- `CodePet-1.2.6.exe`와 `SHA256SUMS`를 초안에 올리고 실제 파일을 다시 받아 원본·체크섬 파일과 일치하는지 검사한 뒤 최신 정식 버전으로 공개했다. 크기 **170,576,110 bytes**, SHA-256:
+  `137c4a0986549d586aced9642aa7b562df9fc1ea876bf60196b818b2ad38a8b8`.
+- 공개 후 실제 앱 업데이트 검사 모듈로 `1.2.5`에서 `available`, 최신 버전 `1.2.6`, 포크 exe/체크섬 URL을 확인했다. `1.2.6`에서는 `up-to-date`를 확인했다. 로그: 저장소 밖 `dev-tools/logs/codepet-v126-update-check.json`.
+- 현재 사용 중인 앱을 종료하거나 실제 업데이트 교체를 실행하지 않았다. 실제 구독 모델의 새 승인 흐름·파일 변경 요청, Claude 호출별 승인·MCP/브라우저 연결·실행 환경 편집과 Android는 이번 검증 완료 범위가 아니다.
 
 ## 2026-11-08 / v1.2.6 릴리스 준비 / chore/release-1.2.6
 

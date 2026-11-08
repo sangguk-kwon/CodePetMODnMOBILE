@@ -10,6 +10,7 @@ Windows PC용 CodePet 개선판과 **설치형 Android 앱**의 개발 기준이
 | [ROADMAP.ko.md](ROADMAP.ko.md) | 합의한 범위, 단계, 선행 조건, 완료 기준 |
 | [ARCHITECTURE.ko.md](ARCHITECTURE.ko.md) | PC 실행부, 에이전트, 브라우저, 모바일, 데이터 구조 |
 | [PROGRESS_UPDATES.ko.md](PROGRESS_UPDATES.ko.md) | 실시간 진행 보고 Phase 1·2의 범위, CLI 지원, 이벤트/UI 설계와 검증 계획 |
+| [TOOL_SETTINGS.ko.md](TOOL_SETTINGS.ko.md) | 공통 도구 설정·허용 규칙의 실제 지원 범위, 저장·적용·검증과 한계 |
 | [STATUS.ko.md](STATUS.ko.md) | 완료 근거, 미검증 사항, 다음 작업 |
 | [../AGENTS.md](../AGENTS.md) | 후속 개발자와 에이전트의 작업 지침 |
 

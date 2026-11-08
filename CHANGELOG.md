@@ -1,5 +1,25 @@
 # Release notes / 릴리즈 노트
 
+## 1.2.6 — 2026-11-08
+
+### English
+
+- Add Claude and Codex tool/permission diagnostics with configuration source information and the last server-confirmed Codex permission snapshot.
+- Handle Codex command/file approval requests through App Server in workspace-write mode with full auto-approval off. Allow or deny the pending request without replaying the entire task.
+- Add common tool settings: exclude selected Claude built-in tools and manage exact-command/file approval rules for Codex. Settings persist separately by provider, account and workspace without editing global CLI configuration.
+- Reject stale or in-use settings changes and prevent Codex full auto-approval from being combined with saved approval rules.
+- Approval rules apply only to requests the CLI sends to CodePet, not every operation inside the sandbox. Claude per-call rules, MCP/browser connection management and separate execution-environment controls remain planned.
+- Validated with automated tests, actual Codex plus a local mock provider, and Electron UI checks. Actual subscription-model approval flows are not yet verified.
+
+### 한국어
+
+- Claude·Codex 도구/권한 진단에 설정 출처와 마지막 실행에서 서버가 확인한 Codex 권한 정보를 표시합니다.
+- 작업공간 쓰기·전체 자동 승인 끔에서 Codex 명령/파일 승인 요청을 App Server로 처리합니다. 작업 전체를 재실행하지 않고 대기 중인 요청을 허용하거나 거부합니다.
+- 공통 도구 설정에서 Claude 내장 도구 사용 여부와 Codex의 정확한 명령/파일 승인 규칙을 관리합니다. 전역 CLI 설정을 수정하지 않고 공급자·계정·작업공간별로 저장합니다.
+- 오래된 설정이나 실행 중인 범위의 설정 변경을 거부하며, Codex 전체 자동 승인과 저장된 승인 규칙을 함께 사용하지 못하도록 합니다.
+- 승인 규칙은 CLI가 CodePet에 보낸 승인 요청에만 적용됩니다. 샌드박스 안의 모든 작업을 통제하는 기능은 아닙니다. Claude 호출별 규칙·MCP/브라우저 연결 관리·실행 환경 별도 편집은 후속입니다.
+- 자동 테스트·실제 Codex와 로컬 모의 공급자·Electron UI 검사로 검증했습니다. 실제 구독 모델의 승인 흐름은 아직 미검증입니다.
+
 ## 1.2.5 — 2026-11-05
 
 ### English

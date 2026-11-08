@@ -1,4 +1,4 @@
-/* global chatMarkdown, chatClipboard, chatPermissions */
+/* global chatMarkdown, chatClipboard, chatPermissions, chatToolSettings */
 const chatScroll = document.getElementById("chat-scroll");
 const messageList = document.getElementById("message-list");
 const typingRow = document.getElementById("typing-row");
@@ -777,6 +777,7 @@ function closePopover() {
 
 function openPopover(anchor, build) {
   popover.textContent = "";
+  popover.style.maxHeight = "";
   build(popover);
   popover.hidden = false;
   popoverBackdrop.hidden = false;
@@ -789,6 +790,8 @@ function openPopover(anchor, build) {
   }
   popover.style.left = `${Math.max(8, left)}px`;
   popover.style.top = `${top}px`;
+  // 펼쳐지는 내용이 화면 아래로 넘치지 않도록 선택된 위치 기준으로 높이를 제한한다.
+  popover.style.maxHeight = `${Math.max(0, window.innerHeight - top - 8)}px`;
 }
 
 popoverBackdrop.addEventListener("click", closePopover);
@@ -966,25 +969,50 @@ function openAgentPopover(anchor, agentId) {
       : autoApproveToggle.disabled
         ? "워크스페이스 쓰기 권한에서만 사용할 수 있습니다"
         : "이 에이전트가 요청하는 도구 권한을 개별 확인 없이 승인합니다";
+    const autoApproveEligibleDisabled = autoApproveToggle.disabled;
+    let autoApproveSaving = false;
     autoApproveToggle.addEventListener("change", async () => {
-      if (autoApproveToggle.checked) {
+      if (autoApproveSaving) return;
+      const requested = autoApproveToggle.checked;
+      const previous = !requested;
+      if (requested) {
         const confirmed = window.confirm(
           `${agent.name}의 도구 자동 승인을 켤까요?\n명령 실행과 파일 변경이 개별 확인 없이 진행됩니다. 신뢰하는 워크스페이스에서만 사용하세요.`
+          + ({
+            codex: "\nCodex는 승인 확인과 샌드박스를 모두 우회합니다.",
+            claude: "\nClaude는 권한 확인만 생략하며 MCP를 연결하지 않습니다.",
+          }[agent.providerId || provider.id] || "")
         );
         if (!confirmed) { autoApproveToggle.checked = false; return; }
       }
-      await configureAgent(agentId, { autoApprove: autoApproveToggle.checked });
+      if (activeSessionId !== sessionId || !root.isConnected) return;
+      autoApproveSaving = true;
+      autoApproveToggle.disabled = true;
+      try {
+        const result = await configureAgent(agentId, { autoApprove: requested });
+        if (!result && activeSessionId === sessionId && root.isConnected) {
+          autoApproveToggle.checked = previous;
+        }
+      } finally {
+        autoApproveSaving = false;
+        autoApproveToggle.disabled = autoApproveEligibleDisabled;
+      }
     });
     root.append(makeField("도구 자동 승인", autoApproveToggle));
     if (["claude", "codex"].includes(agent.providerId || provider.id)) {
       const hint = document.createElement("p");
       hint.className = "popover-hint";
       hint.textContent = (agent.providerId || provider.id) === "codex"
-        ? "현재 자동 승인을 켜면 Codex 샌드박스도 해제됩니다. 네트워크·로그인 문제는 별도 확인이 필요합니다."
-        : "현재 자동 승인은 Claude 권한 확인을 생략합니다. 도구·MCP 연결을 추가하는 설정은 아닙니다.";
-      root.append(hint, chatPermissions.createPanel({
+        ? "Codex 자동 승인은 승인 확인과 샌드박스를 모두 우회합니다. 저장된 승인 규칙과 동시에 사용할 수 없으므로, 자동 승인을 켜려면 먼저 아래 규칙을 삭제하세요. 네트워크·로그인 문제는 별도 확인이 필요합니다."
+        : "Claude 자동 승인은 권한 확인만 생략합니다. 도구를 추가하거나 MCP를 연결하지 않습니다.";
+      const isCurrent = () => activeSessionId === sessionId && root.isConnected;
+      root.append(hint, chatToolSettings.createPanel({
+        load: () => window.chatApi.toolSettings(sessionId, agentId),
+        save: (settings, revision) => window.chatApi.saveToolSettings(sessionId, agentId, settings, revision),
+        isCurrent,
+      }), chatPermissions.createPanel({
         load: () => window.chatApi.agentPermissions(sessionId, agentId),
-        isCurrent: () => activeSessionId === sessionId && root.isConnected,
+        isCurrent,
       }));
     }
     if (config.profileKey) {
@@ -2195,6 +2223,7 @@ function applyFullState(full) {
   if (full.sessions) sessions = full.sessions;
   if (Object.hasOwn(full, "activeSessionId")) activeSessionId = full.activeSessionId;
   if (previousSessionId !== activeSessionId) clearPendingReply();
+  if (previousSessionId !== activeSessionId) closePopover();
   if (previousSessionId !== activeSessionId) resetSessionSearchState();
 
   if (full.session) {

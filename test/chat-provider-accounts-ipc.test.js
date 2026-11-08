@@ -15,6 +15,7 @@ for (const providerId of ["claude", "grok"]) test(`${providerId} accounts retain
   const profiles = ["a", "b"].map((key) => ({ key, label: `Account ${key}` }));
   const record = (key) => ({ ...base, modelOptions: [{ id: `model-${key}`, efforts: ["high"] }], models: [`model-${key}`] });
   const accountService = { list: () => profiles, discover: async (key) => record(key), record,
+    settingsContext: key => ({ sourceHome: path.join(root, `private-${key}`) }),
     prepare: (key) => ({ env: { ...process.env, [providerId === "claude" ? "CLAUDE_CONFIG_DIR" : "GROK_HOME"]: path.join(root, `private-${key}`) } }) };
   const calls = [];
   t.mock.method(runner, "runAgentProcess", (input) => {

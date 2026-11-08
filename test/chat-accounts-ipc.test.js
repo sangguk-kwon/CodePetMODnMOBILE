@@ -16,6 +16,7 @@ test("saved account participants keep their models, mentions, traces and CLI ide
   const profiles = ["a", "b"].map((key) => ({ key, label: `Account ${key}` }));
   const record = (key) => ({ ...base, modelOptions: [{ id: `model-${key}`, efforts: ["high"] }], models: [`model-${key}`] });
   const accountService = { list: () => profiles, discover: async (key) => record(key), record,
+    settingsContext: key => ({ sourceHome: path.join(root, `private-${key}`) }),
     prepare: (key) => ({ env: { ...process.env, CODEX_HOME: path.join(root, `private-${key}`) } }) };
   const calls = [];
   const runtime = new CodexChatRuntime({ root: path.join(root, "runtime", "codex"), platform: "linux" });

@@ -100,7 +100,11 @@ function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], pr
     let approved;
     try {
       approved = await requestApproval({ summary: network ? "네트워크 요청 승인" : file ? "파일 변경 승인" : "명령 실행 승인",
-        detail, signal: AbortSignal.any([controller.signal, callController.signal]) });
+        detail, signal: AbortSignal.any([controller.signal, callController.signal]),
+        target: { kind: command ? "command" : "file", command: params.command || item?.command,
+          cwd: params.cwd || item?.cwd || cwd, paths: (item?.changes || []).map(change => change.path),
+          network: Boolean(network), grantRoot: params.grantRoot,
+          additionalPermissions: params.additionalPermissions } });
     } finally { pendingRequests.delete(message.id); }
     if (settled || callController.signal.aborted) return;
     if (!approved) deniedRequest = true;

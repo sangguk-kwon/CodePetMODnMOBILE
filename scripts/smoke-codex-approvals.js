@@ -7,6 +7,7 @@ const { once } = require("node:events");
 const { runCodexApprovalTurn } = require("../src/chat/codex-approval-runner");
 const { createLineParser } = require("../src/chat/chat-events");
 const { resolveCodexCommand, CodexLiveRpc } = require("../src/live/codex-live-rpc");
+const { ToolSettingsStore, settingsCapabilities, evaluateApproval, defaults } = require("../src/chat/tool-settings");
 
 const root = path.resolve("artifacts", "codex-approval-smoke", String(Date.now()));
 fs.mkdirSync(root, { recursive: true });
@@ -50,6 +51,7 @@ async function main() {
   server.listen(0, "127.0.0.1"); await once(server, "listening");
   try {
     for (const approved of [true, false]) {
+      let observedTarget, observedThread;
       first = true;
       const dir = path.join(root, approved ? "accept" : "deny"), home = path.join(dir, "home"), cwd = path.join(dir, "workspace");
       fs.mkdirSync(home, { recursive: true }); fs.mkdirSync(cwd, { recursive: true });
@@ -72,7 +74,8 @@ async function main() {
           return rpc;
         },
         prompt: "Local fixture test", model: "gpt-6.1-sol", timeoutMs: 45000,
-        parseLine: createLineParser("codex", null, id => { if (approved) resumedThread = id; }), requestApproval: async approval => {
+        parseLine: createLineParser("codex", null, id => { observedThread = id; if (approved) resumedThread = id; }), requestApproval: async approval => {
+          observedTarget = approval.target;
           report.approvals.push({ approved, summary: approval.summary });
           return approved;
         } });
@@ -82,6 +85,29 @@ async function main() {
       else assert.ok(result.ok || result.status === "denied", result.error);
       assert.equal(fs.existsSync(destination), approved);
       assert.equal(result.appliedPermissions.approval, "on-request");
+      if (process.env.CODEPET_SMOKE_RULES === "1") {
+        const settingsStore = new ToolSettingsStore({ root: dir, readOnly: false });
+        const key = settingsStore.key({ providerId: "codex", accountKey: "fixture", sourceHome: home, workspace: cwd });
+        const initial = settingsStore.get(key);
+        settingsStore.save(key, { ...defaults(), rules: [{ id: "native-exact-command", kind: "command",
+          effect: approved ? "allow" : "deny", match: observedTarget.command }] }, initial.revision,
+        settingsCapabilities({ providerId: "codex", permissionMode: "workspace-write", workspace: cwd }));
+        if (fs.existsSync(destination)) fs.unlinkSync(destination);
+        first = true;
+        let decisions = 0;
+        const ruled = await runCodexApprovalTurn({ ...base, cliSessionId: observedThread, prompt: "Repeat local rule fixture",
+          parseLine: createLineParser("codex"), requestApproval: async approval => {
+            const decision = evaluateApproval(new ToolSettingsStore({ root: dir }).get(key).settings, approval.target, cwd);
+            assert.equal(decision?.effect, approved ? "allow" : "deny", "real CLI target must match persisted exact rule");
+            decisions++;
+            return decision.effect === "allow";
+          } }).promise;
+        assert.equal(decisions, 1);
+        assert.equal(fs.existsSync(destination), approved);
+        assert.ok(ruled.ok || !approved && ruled.status === "denied", ruled.error);
+        report.turns.push({ persistedRule: approved ? "allow" : "deny", result: ruled, markerExists: fs.existsSync(destination) });
+        report.rulesVerified = true;
+      }
     }
     const continued = await runCodexApprovalTurn({ ...resumeBase, cliSessionId: resumedThread, prompt: "Resume local fixture",
       parseLine: createLineParser("codex", null, id => assert.equal(id, resumedThread)),

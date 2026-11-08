@@ -1653,6 +1653,12 @@ textarea:focus-visible {
 }
 
 .agent-identity-form { display: grid; gap: 8px; }
+.permission-diagnostics { border-top: 1px solid var(--line-strong); padding-top: 8px; font-size: 11px; }
+.popover:has(.permission-diagnostics) { width: min(390px, calc(100vw - 24px)); }
+.permission-diagnostics summary { cursor: pointer; }
+.permission-diagnostics-content { display: grid; gap: 6px; margin: 8px 0; overflow-wrap: anywhere; }
+.permission-diagnostics-content p { margin: 0; }
+.permission-settings-source { border-left: 2px solid var(--line-strong); padding-left: 6px; }
 .popover-head strong { min-width: 0; overflow-wrap: anywhere; }
 
 .popover-head {

@@ -33,6 +33,12 @@ class CodexChatAccounts {
     }));
   }
 
+  settingsContext(key) {
+    const profile = this.switcher.getProfile(key);
+    if (!profile?.hasAuth) throw new Error("저장된 Codex 계정이 없습니다.");
+    return { sourceHome: profile.homePath, inheritedFrom: this.switcher.codexHome };
+  }
+
   prepare(key) {
     const profile = this.switcher.getProfile(key);
     if (!profile?.hasAuth) throw new Error("저장된 Codex 계정이 없습니다. 설정의 계정에서 로그인해 주세요.");

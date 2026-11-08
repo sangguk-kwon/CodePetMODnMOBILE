@@ -1,4 +1,4 @@
-/* global chatMarkdown, chatClipboard */
+/* global chatMarkdown, chatClipboard, chatPermissions */
 const chatScroll = document.getElementById("chat-scroll");
 const messageList = document.getElementById("message-list");
 const typingRow = document.getElementById("typing-row");
@@ -976,6 +976,17 @@ function openAgentPopover(anchor, agentId) {
       await configureAgent(agentId, { autoApprove: autoApproveToggle.checked });
     });
     root.append(makeField("도구 자동 승인", autoApproveToggle));
+    if (["claude", "codex"].includes(agent.providerId || provider.id)) {
+      const hint = document.createElement("p");
+      hint.className = "popover-hint";
+      hint.textContent = (agent.providerId || provider.id) === "codex"
+        ? "현재 자동 승인을 켜면 Codex 샌드박스도 해제됩니다. 네트워크·로그인 문제는 별도 확인이 필요합니다."
+        : "현재 자동 승인은 Claude 권한 확인을 생략합니다. 도구·MCP 연결을 추가하는 설정은 아닙니다.";
+      root.append(hint, chatPermissions.createPanel({
+        load: () => window.chatApi.agentPermissions(sessionId, agentId),
+        isCurrent: () => activeSessionId === sessionId && root.isConnected,
+      }));
+    }
     if (config.profileKey) {
       const remove = document.createElement("button");
       remove.type = "button";

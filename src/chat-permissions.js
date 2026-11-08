@@ -17,6 +17,7 @@ window.chatPermissions = {
     let pending = false;
     const labels = {
       "cli-default": "CLI 기본 정책", acceptEdits: "파일 편집 자동 허용", bypass: "승인 생략",
+      "on-request": "필요한 호출에서 사용자 승인",
       unavailable: "실행 불가", "read-only": "읽기 전용", "workspace-write": "작업공간 쓰기",
       disabled: "해제", "not-set-by-codepet": "CodePet이 샌드박스를 지정하지 않음", unknown: "미확인",
       present: "파일 확인", missing: "파일 없음", invalid: "잘못된 JSON/규칙 형식",
@@ -46,8 +47,17 @@ window.chatPermissions = {
         const data = result.diagnostics;
         line(`CLI: ${data.version || "버전 미확인"} · 로그인: ${labels[data.authentication] || "미확인"}`);
         line(`권한 모드: ${data.permissionMode}`);
+        if (data.launch.transport === "app-server") line("실행 연결: Codex App Server");
         line(`CodePet 실행 옵션 · 승인: ${labels[data.launch.approval] || data.launch.approval}`);
         line(`CodePet 실행 옵션 · 샌드박스: ${labels[data.launch.sandbox] || data.launch.sandbox}`);
+        if (data.lastApplied) {
+          line(`마지막 실행에서 서버 확인: 승인 ${labels[data.lastApplied.approval] || data.lastApplied.approval} · 샌드박스 ${data.lastApplied.sandbox}`);
+          line(`확인 시각: ${new Date(data.lastApplied.verifiedAt).toLocaleString()}`);
+          for (const [key, setting] of Object.entries(data.lastApplied.configured || {})) {
+            line(`CLI 설정 ${key}: ${setting.value} · 출처: ${setting.source}`);
+          }
+          line("마지막 실행의 기록이며 현재 설정 적용 여부는 다음 실행에서 다시 확인합니다.");
+        }
         if (data.launch.tools !== null) line(`제공 도구: ${data.launch.tools || "없음"}`);
         line(data.launch.mcp === "excluded-by-codepet" ? "MCP: 현재 CodePet 실행 옵션에서 기존 MCP 설정 제외"
           : "MCP 연결: 미확인");

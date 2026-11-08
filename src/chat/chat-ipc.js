@@ -8,6 +8,8 @@ const {
 } = require("../providers/provider-capabilities");
 const { toDiagnostics } = require("../providers/provider-diagnostics");
 const { diagnoseToolPermissions } = require("./tool-permission-diagnostics");
+const { runCodexApprovalTurn, approvalTransport } = require("./codex-approval-runner");
+const { CallApprovals } = require("./call-approvals");
 const { roomAgentsFromCapabilities } = require("./chat-agents");
 const { identityPatch, aliasKey } = require("./chat-agent-identity");
 const { selectionError } = require("../providers/provider-model-catalog");
@@ -196,6 +198,11 @@ function createChatFeature(options) {
   let chatWindow = null;
   let shuttingDown = false;
   const rooms = new Map();
+  const callApprovals = new CallApprovals({ timeoutMs: options.approvalTimeoutMs,
+    emit: (kind, payload) => {
+      if (kind === "request") notifyChat(payload.sessionId, payload.agentId, "waiting", "도구 실행 승인을 기다리고 있습니다.");
+      broadcast(kind === "request" ? "chat:approval-request" : "chat:approval-resolved", payload);
+    } });
   const activity = new ChatActivity(options.onActivity);
   // 세션별 "아직 전송 전" 첨부: id → 내부 레코드(fileName 포함)
   const pendingAttachments = new Map();
@@ -386,6 +393,12 @@ function createChatFeature(options) {
       if (extraLines.length > 0) fullPrompt = `${prompt}\n${extraLines.join("\n")}`;
 
       const permissionMode = meta.permissionMode || "chat";
+      const approvalScope = (currentMeta) => {
+        const participant = currentMeta?.agents?.[agent.id] || {};
+        return JSON.stringify([currentMeta?.workspace, currentMeta?.permissionMode || "chat", participant.profileKey || null,
+          Boolean(participant.autoApprove), activeAccountKey(providerId, participant)]);
+      };
+      const expectedApprovalScope = approvalScope(meta);
       let native = null;
       let rulesPlan = null;
       let cancelled = false;
@@ -472,7 +485,7 @@ function createChatFeature(options) {
           let assistantModelSeen = false;
           let linkError = null;
           let performedWork = false;
-          const processRun = runAgentProcess({
+          const runOptions = {
             commandPath: execution.commandPath,
             needsShell: execution.needsShell,
             argv: runtime ? [...execution.argv, ...(account ? FILE_AUTH_ARGS : []), ...runtime.argv] : execution.argv,
@@ -512,7 +525,14 @@ function createChatFeature(options) {
             provider: providerId,
             runId,
             onCancel: execution.onCancel,
-          });
+          };
+          const processRun = approvalTransport(providerId, permissionMode, invocationInput.autoApprove)
+            ? runCodexApprovalTurn({ ...runOptions, argv: [...(account ? FILE_AUTH_ARGS : []), ...(runtime?.argv || [])],
+              cliSessionId: native.cliSessionId, model: agent.model, effort: agent.effort,
+              imagePaths: enriched.filter((_, index) => invocation.deliveries[index]?.method === "native-image").map(file => file.path),
+              requestApproval: approval => callApprovals.request({ ...approval, sessionId, agentId: agent.id, runId,
+                isCurrent: () => !cancelled && store?.hasSession(sessionId) && approvalScope(store.readMeta(sessionId)) === expectedApprovalScope }) })
+            : runAgentProcess(runOptions);
           const completion = processRun.promise.then((result) => {
             result = { ...result, sideEffectsPossible: performedWork,
               ...(appliedModel ? { appliedModel } : {}) };
@@ -662,6 +682,7 @@ function createChatFeature(options) {
       typing: room.state().typing,
       turnState: room.turnState(),
       pendingAttachments: [...pendingFor(sessionId).values()].map(publicAttachment),
+      pendingCallApprovals: callApprovals.list(sessionId),
     };
   }
 
@@ -744,6 +765,9 @@ function createChatFeature(options) {
       const diagnostics = await diagnoseToolPermissions({ record, config, ...context, runtimeHome,
         permissionMode: meta.permissionMode || "chat", workspace: meta.workspace,
         chatCwd: store.runtimeChatDir(), platform: options.platform || process.platform });
+      const recent = store.readMessagesPage(sessionId).messages.slice().reverse().find(message =>
+        message.author === agentId && message.agentMeta?.appliedPermissions);
+      if (recent) diagnostics.lastApplied = recent.agentMeta.appliedPermissions;
       return { diagnostics };
     }));
 
@@ -937,7 +961,9 @@ function createChatFeature(options) {
       "chat:approval:respond",
       wrap(async ({ sessionId, approvalId, decision }) => {
         requireSession(sessionId);
-        if (!getRoom(sessionId)?.resolveApproval(approvalId, decision)) {
+        const handled = callApprovals.respond(sessionId, approvalId, decision)
+          || getRoom(sessionId)?.resolveApproval(approvalId, decision);
+        if (!handled) {
           throw new Error("이미 처리되었거나 존재하지 않는 권한 요청입니다.");
         }
         return {};
@@ -1273,6 +1299,7 @@ function createChatFeature(options) {
   // 앱 종료: 진행 중이던 세션은 interrupted로 남겨 다음 시작 때 안내합니다.
   function shutdown() {
     shuttingDown = true;
+    callApprovals.close();
     activity.clear();
     grokDockerRuntime.clearWorkspaceChanges();
     for (const [sessionId, room] of rooms) {

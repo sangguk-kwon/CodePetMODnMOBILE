@@ -46,12 +46,12 @@ test("turn choices survive preparation, live edits and approval retry; next turn
     },
   });
   room.once("approval-request", ({ approvalId }) => {
-    room.findAgent("codex").model = "newest-model";
+    room.findAgent("claude").model = "newest-model";
     room.resolveApproval(approvalId, "approve");
   });
-  room.sendUserMessage("@codex first");
-  room.findAgent("codex").model = "new-model";
-  room.findAgent("codex").effort = "high";
+  room.sendUserMessage("@claude first");
+  room.findAgent("claude").model = "new-model";
+  room.findAgent("claude").effort = "high";
   releasePreparation();
   await settle(room);
   assert.deepEqual(calls, [
@@ -62,7 +62,7 @@ test("turn choices survive preparation, live edits and approval retry; next turn
   assert.equal(room.messages.at(-1).agentMeta.effort, "low");
   assert.equal(room.messages.at(-1).agentMeta.appliedModel, "confirmed-model");
   assert.equal(room.messages.at(-1).agentMeta.appliedEffort, undefined);
-  room.sendUserMessage("@codex next");
+  room.sendUserMessage("@claude next");
   await settle(room);
   assert.deepEqual(calls[2], { model: "newest-model", effort: "high", autoApprove: false });
 });
@@ -964,11 +964,11 @@ test("권한 요청을 승인하면 같은 턴을 자동 승인으로 한 번 �
     },
   });
   room.once("approval-request", ({ approvalId }) => room.resolveApproval(approvalId, "approve"));
-  room.sendUserMessage("@codex 실행해줘");
+  room.sendUserMessage("@claude 실행해줘");
   await settle(room);
   assert.deepEqual(calls, [
-    { agentId: "codex", autoApprove: false },
-    { agentId: "codex", autoApprove: true },
+    { agentId: "claude", autoApprove: false },
+    { agentId: "claude", autoApprove: true },
   ]);
   assert.equal(room.messages.at(-1).text, "승인 후 완료");
 });
@@ -984,13 +984,13 @@ test("승인 후 재시도도 권한을 요구하면 상세 원인을 남긴다"
           summary: "도구 실행 권한이 필요합니다.",
           detail: "종료 코드 1 · 워크스페이스 밖 경로 접근이 거부되었습니다",
         },
-        diagnostics: { provider: "codex", exitCode: 1 },
+        diagnostics: { provider: "claude", exitCode: 1 },
       }),
       cancel: () => {},
     }),
   });
   room.once("approval-request", ({ approvalId }) => room.resolveApproval(approvalId, "approve"));
-  room.sendUserMessage("@codex 실행해줘");
+  room.sendUserMessage("@claude 실행해줘");
   await settle(room);
 
   const failure = room.messages.at(-1);
@@ -1051,13 +1051,25 @@ test("권한 요청을 거부하면 기존 문구를 유지한다", async () => 
     },
   });
   room.once("approval-request", ({ approvalId }) => room.resolveApproval(approvalId, "deny"));
-  room.sendUserMessage("@codex 실행해줘");
+  room.sendUserMessage("@claude 실행해줘");
   await settle(room);
 
   assert.deepEqual(calls, [false]);
   const failure = room.messages.at(-1);
   assert.equal(failure.error, true);
   assert.equal(failure.text, "권한 요청을 거부했습니다.");
+});
+
+test("Codex approval failures never replay the turn with bypass permissions", async () => {
+  let calls = 0, asked = 0;
+  const room = new ChatRoom({ agents: makeAgents(), runAgent: () => {
+    calls++;
+    return { promise: Promise.resolve({ ok: false, approvalRequired: true, approval: { summary: "fixture" } }), cancel() {} };
+  } });
+  room.on("approval-request", () => { asked++; });
+  room.sendUserMessage("@codex fixture"); await settle(room);
+  assert.equal(calls, 1); assert.equal(asked, 0);
+  assert.equal(room.messages.at(-1).error, true);
 });
 
 test("원인 없는 실패도 내부 식별자로 설명된다", async () => {

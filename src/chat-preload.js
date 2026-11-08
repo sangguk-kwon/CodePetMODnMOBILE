@@ -24,6 +24,7 @@ const INVOKE = Object.freeze({
   WORKSPACE_CLEAR: "chat:workspace:clear",
   PERMISSION_SET: "chat:permission:set",
   AGENT_CONFIGURE: "chat:agent:configure",
+  AGENT_PERMISSIONS: "chat:agent:permissions",
   ACCOUNTS_LIST: "chat:accounts:list",
   AGENT_ADD: "chat:agent:add",
   AGENT_REMOVE: "chat:agent:remove",
@@ -76,6 +77,8 @@ contextBridge.exposeInMainWorld("chatApi", {
     ipcRenderer.invoke(INVOKE.PERMISSION_SET, { sessionId, mode }),
   agentConfigure: (sessionId, agentId, patch) =>
     ipcRenderer.invoke(INVOKE.AGENT_CONFIGURE, { sessionId, agentId, patch }),
+  agentPermissions: (sessionId, agentId) =>
+    ipcRenderer.invoke(INVOKE.AGENT_PERMISSIONS, { sessionId, agentId }),
   accountsList: () => ipcRenderer.invoke(INVOKE.ACCOUNTS_LIST),
   agentAdd: (sessionId, profileKey, name, providerId) => ipcRenderer.invoke(INVOKE.AGENT_ADD, { sessionId, profileKey, name, providerId }),
   agentRemove: (sessionId, agentId) => ipcRenderer.invoke(INVOKE.AGENT_REMOVE, { sessionId, agentId }),

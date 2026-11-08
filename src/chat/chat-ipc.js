@@ -7,6 +7,7 @@ const {
   toPublicProviders,
 } = require("../providers/provider-capabilities");
 const { toDiagnostics } = require("../providers/provider-diagnostics");
+const { diagnoseToolPermissions } = require("./tool-permission-diagnostics");
 const { roomAgentsFromCapabilities } = require("./chat-agents");
 const { identityPatch, aliasKey } = require("./chat-agent-identity");
 const { selectionError } = require("../providers/provider-model-catalog");
@@ -721,6 +722,30 @@ function createChatFeature(options) {
 
   function registerIpcHandlers() {
     ipcMain.handle("chat:state", wrap(async (input) => fullState(input)));
+
+    ipcMain.handle("chat:agent:permissions", wrap(async ({ sessionId, agentId }) => {
+      requireSession(sessionId);
+      const meta = store.readMeta(sessionId);
+      const record = participantRecord(meta, agentId);
+      if (!record) throw new Error("참가자를 찾을 수 없습니다.");
+      const config = meta.agents?.[agentId] || {};
+      const providerId = record.providerId || record.id;
+      if (!["claude", "codex"].includes(providerId)) throw new Error("이 공급자의 도구·권한 진단은 아직 지원하지 않습니다.");
+      const env = options.env || process.env;
+      let context = { sourceHome: providerId === "codex" ? env.CODEX_HOME || path.join(os.homedir(), ".codex")
+        : env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude") };
+      if (config.profileKey) {
+        const service = accountService(providerId);
+        if (!service?.settingsContext) throw new Error("이 계정의 설정 경로를 확인할 수 없습니다.");
+        context = service.settingsContext(config.profileKey);
+      }
+      const runtimeHome = providerId === "codex"
+        ? codexRuntime.homeFor(context.sourceHome, activeAccountKey(providerId, config)) : context.sourceHome;
+      const diagnostics = await diagnoseToolPermissions({ record, config, ...context, runtimeHome,
+        permissionMode: meta.permissionMode || "chat", workspace: meta.workspace,
+        chatCwd: store.runtimeChatDir(), platform: options.platform || process.platform });
+      return { diagnostics };
+    }));
 
     ipcMain.handle("chat:messages:history", wrap(async ({ sessionId, before }) => {
       requireSession(sessionId);

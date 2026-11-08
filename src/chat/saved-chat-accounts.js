@@ -89,6 +89,12 @@ class SavedChatAccounts {
     return this.switcher.store.list().map(({ key, label, email, plan }) => ({ key, label: label || email || key, email, plan }));
   }
 
+  settingsContext(key) {
+    const profile = this.switcher.store.get(key);
+    if (!profile) throw new Error("저장된 계정이 없습니다.");
+    return { sourceHome: path.join(this.switcher.store.root, "chat", profile.key), inheritedFrom: path.join(this.switcher.home, `.${this.providerId}`) };
+  }
+
   prepare(key) {
     const profile = this.switcher.store.get(key);
     if (!profile) throw new Error(`저장된 ${this.label} 계정이 없습니다. 설정에서 다시 로그인해 주세요.`);

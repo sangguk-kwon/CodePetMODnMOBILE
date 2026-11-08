@@ -35,7 +35,7 @@ Android 개발 완료를 뜻하지 않는다. 과거 기록의 미검증 항목�
 - 실제 Codex `0.164.0` + 루프백 모의 공급자: 기존 한 번 승인 이후 저장한 정확 일치 규칙으로 같은 요청 허용/거부·파일 생성 여부·스레드 재개를 확인했다. 실제 인증 사본/외부 모델 호출 없음. `CODEPET_SMOKE_RULES=1 node scripts/smoke-codex-approvals.js`, 결과 `artifacts/codex-approval-smoke/1794138801365/report.json`.
 - 실제 Electron 렌더러/preload/IPC + 모의 실행기: 저장/삭제·중복 클릭·비밀값 거절 후 초안 유지·규칙에 따른 허용/거부·새로고침 후 저장값 유지·Claude 도구 제외·오래된 응답/저장 무시·세션 전환 후 이전 설정 닫기를 검사하고 두 공급자 화면 캡처를 검토했다. 검토 중 발견한 자동 승인 거절 후 체크박스 복원과 펼친 패널의 화면 밖 넘침도 수정했다. `scripts/smoke-chat-tool-settings.js`, 결과 `artifacts/chat-tool-settings-smoke/1794139287652/`. 로그: 저장소 밖 `dev-tools/logs/codepet-common-tools-ui.log`.
 - 미구현/미검증: Claude 호출별 규칙, MCP/브라우저 연결 관리, 실행 환경 별도 편집, 기존 CLI 규칙 명시적 가져오기·충돌 해석, 실제 구독 모델 작업과 새 Windows 패키지. 현재 설치 앱에는 아직 반영되지 않았다. 진행 보고/Android·원본 저장소·릴리스는 변경하지 않았다.
-- 후속 작업과 보장 한계는 [공통 도구 설정](TOOL_SETTINGS.ko.md)에 기록했다. 이번 작업은 사용자 포크의 develop 대상 PR로 게시하며 병합·릴리스는 별도다.
+- 후속 작업과 보장 한계는 [공통 도구 설정](TOOL_SETTINGS.ko.md)에 기록했다. 구현 커밋 `f135021`을 사용자 포크의 develop 대상 [PR #15](https://github.com/sangguk-kwon/CodePetMODnMOBILE/pull/15)로 게시했다. 병합·릴리스는 하지 않았다.
 
 ## 2026-11-08 / Codex 호출별 승인 / feat/codex-tool-approvals
 

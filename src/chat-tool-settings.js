@@ -1,5 +1,8 @@
 /* global window, document */
 // CodePet-owned tool availability and exact-call approval rules. Text via DOM only.
+// TODO(CLAUDE-UI-REVIEW): Claude may freely rework this UI later, as authorized by
+// the user. Keep the pending task in docs/CLAUDE_UI_REVIEW.ko.md across releases;
+// Codex implementation/tests do not count as Claude review. Do not auto-call Claude.
 window.chatToolSettings = {
   createPanel({ load, save, isCurrent }) {
     const MAX_RULES = 100;

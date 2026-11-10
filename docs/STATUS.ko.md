@@ -4,7 +4,7 @@
 
 ## 현재 상태
 
-**Windows 최신 배포는 v1.2.6이다. 진단/계획(PR #13/#12), Codex 호출별 승인(PR #14), 공통 도구 설정·규칙 저장(PR #15)과 버전 변경(PR #16)을 develop에 병합하고 이 Windows PC에서 빌드해 사용자 포크에 게시했다. Claude 내장 도구 제외와 Codex가 요청한 승인에 대한 정확 일치 규칙을 지원한다. Claude 호출별 승인·MCP 연결·실행 환경 별도 편집·실제 구독 검증은 남아 있으며 P1/P2/P3 전체 완료가 아니다.**
+**Windows 최신 배포는 v1.2.6이다. 이번 PR #18에는 Claude 호출별 승인·공통 규칙 연결과 UI, Claude UI 검토 이월 과제를 함께 담았다. 실제 Claude CLI + 로컬 모의 공급자·Electron UI·개발용 Windows 폴더 빌드를 검증했으며 실제 구독 모델의 새 승인 흐름은 미검증이다. 사용자 요청으로 기존 #18만 갱신하고 병합·릴리스는 하지 않는다. MCP 연결·실행 환경 별도 편집 등과 P1/P2/P3 전체 완료는 후속이다.**
 
 | 항목 | 상태 | 근거/메모 |
 |---|---|---|
@@ -15,7 +15,7 @@
 | Claude/Codex 실제 연동 | 변경된 실행부에서 제한된 조합 확인 | Claude 보고: createChatFeature + 실제 CLI로 모델 변경 후 동일 세션/스레드와 코드워드 보존. 추론 실제 적용은 미검증 |
 | Chrome/Codex 브라우저 | P1 예정 | 기존 연결 재사용 선호만 확정 |
 | PC 새 기능 | 일부 구현·배포 | 모델·추론 연속성, 날씨 버튼 겹침 수정, 반복 지침 축소. 지원 조합 확대·호출별 승인·브라우저 검증은 남음 |
-| 도구 설정·호출별 승인 | 진단·Codex 승인·공통 설정 v1.2.6 배포 | Claude 도구 제외·Codex 승인 규칙·범위별 저장. 실제 구독 공급자 미검증. Claude 승인·MCP/브라우저·환경 편집 후속 |
+| 도구 설정·호출별 승인 | v1.2.6 배포 + PR #18에 Claude 승인·규칙 연결 구현 | 두 공급자의 CLI 요청에 일회 승인·정확 일치 규칙 적용. Claude 추가분은 미병합·미배포. 실제 구독 공급자·MCP/브라우저·환경 편집 후속 |
 | 실시간 작업 진행 보고 | 계획 등록, 미구현 | Phase 1 이벤트 기반 누적 이력, Phase 2 공개 자연어 보고. Claude/Codex 공통 UI 필수. 기존 작업 순서 유지 |
 | Android 프로젝트/APK | 미구현 | Kotlin/Compose 방향만 문서화 |
 | 원격 서버·페어링·알림 | 미구현 | 서비스 배포/포트 공개/기기 연결 없음 |
@@ -28,12 +28,27 @@ Android 개발 완료를 뜻하지 않는다. 과거 기록의 미검증 항목�
 
 - [ ] **`CLAUDE-UI-REVIEW` / 담당 Claude / 미완료** — [UI 검토·자유 재구성 과제](CLAUDE_UI_REVIEW.ko.md). 사용량 부족으로 현재 UI 구현·검증은 Codex가 맡는다. Claude의 실제 검토 근거가 생길 때까지 후속 작업·PR·릴리스에도 계속 이월하며 자동 호출하지 않는다. Codex 자체 검증으로 완료 처리하지 않는다.
 
+## 2026-11-10 / Claude 호출별 승인·공통 규칙 연결 / PR #18
+
+- 사용자 요청으로 별도 기능 PR을 만들지 않고 기존 [PR #18](https://github.com/sangguk-kwon/CodePetMODnMOBILE/pull/18)의 `docs/claude-ui-review-handoff` 브랜치에 기능을 추가했다. 구현·UI·검증은 Codex 담당이며 병합은 사용자가 한다.
+- 설치된 Claude native CLI의 양방향 stream-json 제어 프로토콜을 선택했다. 기존 CLI/계정 환경을 그대로 전달하며 별도 SDK 의존성·API 인증 전환·시스템 프롬프트 교체를 추가하지 않았다. 기존 runner의 종료·취소·출력 제한을 재사용한다.
+- 작업공간 쓰기·전체 자동 승인 끔에서 `default` 권한 모드를 사용한다. 기존 `acceptEdits` 자동 편집 허용에서 전환되며 CLI가 전달한 요청만 개별 확인한다. 초기화·유효 세션 ID·재개 대상·실제 시작 폴더·권한 모드·최종 결과를 확인하고, 실패를 전체 권한 우회 재실행으로 바꾸지 않는다. 폴더를 바꾸는 CLI 래퍼도 불일치하면 실행을 중단한다.
+- 공통 `CallApprovals`의 세션·계정·실행·revision·만료·취소와 창 재로딩 복원을 재사용한다. Claude Bash·Write/Edit의 정확 일치 allow/deny 규칙을 연결했고 전체 자동 승인과 규칙 동시 사용을 두 공급자 모두 거부한다. 도구 제외도 유지한다.
+- 파일 본문·비공개 추론·권한 제어 프레임은 승인 카드에 복사하지 않는다. 샌드박스 해제 요청과 긴 내용 생략은 명시한다. 허용 시 원본 입력만 돌려주고 permission suggestions/updatedPermissions는 저장하지 않는다. 알 수 없는 제어 요청·별도 질문 UI는 명시적으로 미지원 처리한다. 기존 CLI 규칙이 먼저 허용한 호출까지 통제한다고 표시하지 않는다.
+- 하위 작업/세션 실행 상태가 남아 있으면 첫 result만 보고 승인 채널을 닫지 않는다. 최종 idle 뒤 종료한다. API 결과의 `is_error`를 success subtype보다 우선해 실패를 성공으로 표시하는 경우도 수정했다.
+- Node `22.23.4` 전체 테스트: **799 통과, 실패 0, skip 1**. 새 wire-protocol 검사 6개·Claude IPC 검사·전체 턴 우회 금지 검사와 기존 Codex/Grok/AGY·계정·세션 회귀를 포함한다. 기존 retry 검사 일부는 해당 호환 경로를 유지하는 AGY로 옮겼다. 로그: 저장소 밖 `dev-tools/logs/codepet-claude-approval-full.log`.
+- 설치된 Claude `2.1.308` + 루프백 Anthropic 모의 공급자로 Bash/Write 일회 허용·거부, 규칙 허용·거부, 파일 생성 여부와 같은 세션 ID 재개를 확인했다. 격리된 임시 설정과 가상 API 키만 쓰고 실제 구독 인증/외부 모델을 사용하지 않았다. `artifacts/claude-approval-smoke/1794321118286/report.json`; 로그 `dev-tools/logs/codepet-claude-approval-native.log`.
+- 실제 Electron renderer/preload/IPC + 모의 어댑터에서 Claude 승인·거부·중복 클릭·세션 전환·재로딩 복원·취소와 공통 설정의 Claude 규칙 저장을 확인했다. 화면 캡처를 Codex가 검토했다. `artifacts/chat-call-approval-smoke/1794320577575/`, `artifacts/chat-tool-settings-smoke/1794320081228/`. 기존 Codex 승인 UI 회귀도 통과했다. 이 결과는 Claude 본인의 UI 검토가 아니다.
+- 개발용 Windows x64 폴더 패키지 빌드와 준비·IPC·버전·정상 종료 검사 통과. 공개 릴리스용 portable 파일은 만들거나 게시하지 않았고 v1.2.6 태그/자산도 바꾸지 않았다. 로그: `dev-tools/logs/codepet-claude-approval-build.log`. 이 개발 빌드의 앱 버전은 아직 `1.2.6`이다.
+- 한계/후속: 실제 구독 계정의 새 승인 흐름, 장시간 하위 작업과 CLI 버전별 동작은 미검증이다. AskUserQuestion/MCP 질문·연결 관리와 실행 환경 편집은 미구현이다. Claude 명령 규칙의 폴더는 CLI 시작 작업공간이며 셸의 실제 현재 폴더나 전체 영향 범위 검증을 뜻하지 않는다.
+- **계속 이월:** `CLAUDE-UI-REVIEW`는 미완료로 유지한다. 이번 구현·테스트·Codex 화면 검토로 완료 처리하지 않으며 향후 Claude가 실제 검토한 근거를 남겨야 한다.
+
 ## 2026-11-10 / UI 담당 변경·Claude 검토 과제 이월
 
 - 사용자 지시로 이후 UI 구성까지 Codex가 담당한다. 앞서 합의한 Claude 호출별 승인·공통 규칙 연결·검증·포크 PR 범위는 유지하며, UI 구성만을 위해 Claude를 호출하던 방침을 변경한다.
 - `CLAUDE-UI-REVIEW`를 별도 문서·로드맵·AGENTS 작업 지침과 UI 소스 TODO에 등록했다. Claude가 나중에 UI 배치·문구·스타일·상호작용을 자신의 판단으로 자유롭게 재구성할 수 있다는 사용자 허용도 기록했다.
 - 이 과제는 실제 검토 날짜·범위·결과·검증 근거가 남기 전까지 미완료로 유지한다. 부분 검토·Codex 테스트·PR 병합·릴리스로 지우거나 완료 처리하지 않는다.
-- 이 변경은 담당/이월 규칙과 코드 주석 변경이다. 새 승인 어댑터나 UI 기능의 구현 완료를 뜻하지 않는다. 앱 테스트·빌드·릴리스·Claude 모델 호출은 수행하지 않았다. 문서 링크·변경 범위와 diff 형식만 검증했다.
+- 초기 등록은 담당/이월 규칙과 코드 주석 변경뿐이었고 앱 테스트·빌드·릴리스·Claude 모델 호출은 수행하지 않았다. 이후 같은 PR에 구현·검증을 추가한 결과는 위 기록을 따른다.
 
 ## 2026-11-08 / v1.2.6 배포 검증 / docs/release-1.2.6-verification
 

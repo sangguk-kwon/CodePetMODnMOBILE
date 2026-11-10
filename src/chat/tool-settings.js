@@ -14,7 +14,7 @@ const defaults = () => ({ version: 1, tools: {}, rules: [] });
 
 function settingsCapabilities({ providerId, permissionMode, autoApprove, workspace }) {
   const write = permissionMode === "workspace-write";
-  const rules = providerId === "codex" && write && !autoApprove && Boolean(workspace);
+  const rules = ["codex", "claude"].includes(providerId) && write && !autoApprove && Boolean(workspace);
   return {
     tools: Object.entries(TOOLS).map(([id, label]) => ({ id, label,
       supported: providerId === "claude" && (write || permissionMode === "workspace-read" && ["Read", "Grep", "Glob"].includes(id)) })),
@@ -26,7 +26,9 @@ function settingsCapabilities({ providerId, permissionMode, autoApprove, workspa
       "허용/거부 규칙은 CLI가 CodePet에 요청한 승인에만 적용합니다. 샌드박스 안에서 승인 없이 실행되는 작업을 차단하는 접근 제어 목록이 아닙니다.",
       "명령은 작업 폴더와 명령 전체가 정확히 일치해야 합니다. 접두사·와일드카드 규칙은 지원하지 않습니다. 같은 명령도 파일 내용이나 환경에 따라 다른 결과를 낼 수 있습니다.",
       "파일 자동 허용은 작업공간 내부의 개별 파일에만 적용합니다. 디렉터리 권한·추가 권한·네트워크 승인은 매번 별도 확인합니다. 겹치는 규칙은 거부가 우선합니다.",
-      ...(providerId === "claude" ? ["Claude 도구 끄기는 CLI의 도구 제외 옵션으로 적용합니다. Bash 등 다른 도구를 통한 같은 자원 접근까지 차단하는 것은 아닙니다. 호출별 규칙은 Claude 양방향 승인 연결 후 지원합니다.",
+      ...(providerId === "claude" ? ["Claude 도구 끄기는 CLI의 도구 제외 옵션으로 적용합니다. Bash 등 다른 도구를 통한 같은 자원 접근까지 차단하는 것은 아닙니다. 작업공간 쓰기·전체 자동 승인 끔에서는 CLI가 요청한 Bash·Write/Edit 승인에 정확 일치 규칙을 적용합니다.",
+        "Claude 기존 CLI/관리자 규칙이 먼저 허용·거부한 호출은 CodePet 승인 카드에 오지 않을 수 있습니다. 기존 파일 편집 자동 허용 대신 기본 승인 모드를 사용하며 전체 작업을 재실행하지 않습니다.",
+        "Claude 명령 규칙의 작업 폴더는 CLI 실행을 시작한 작업공간입니다. 셸에서 이동한 현재 폴더나 명령의 실제 영향 범위를 검증하는 규칙이 아닙니다.",
         "MCP·브라우저 연결 추가/선택은 후속 작업입니다. 현재 Claude 실행은 기존 MCP 설정을 제외합니다."] : []),
       ...(providerId === "codex" ? ["Codex 내장 도구의 개별 사용 중지는 아직 지원하지 않습니다. 규칙은 작업공간 쓰기·전체 자동 승인 끔에서만 적용됩니다. MCP·브라우저 연결 관리는 미지원이며 CLI 설정을 자동으로 수정하지 않습니다."] : []),
       ...(autoApprove ? [providerId === "codex" ? "기존 전체 자동 승인은 승인과 샌드박스를 모두 우회합니다. 규칙을 사용하려면 먼저 꺼주세요."

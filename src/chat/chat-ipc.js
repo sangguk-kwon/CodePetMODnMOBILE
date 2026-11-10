@@ -9,6 +9,7 @@ const {
 const { toDiagnostics } = require("../providers/provider-diagnostics");
 const { diagnoseToolPermissions } = require("./tool-permission-diagnostics");
 const { runCodexApprovalTurn, approvalTransport } = require("./codex-approval-runner");
+const { runClaudeApprovalTurn, claudeApprovalTransport } = require("./claude-approval-runner");
 const { CallApprovals } = require("./call-approvals");
 const { ToolSettingsStore, settingsCapabilities, applyToolSettings, evaluateApproval, defaults: defaultToolSettings } = require("./tool-settings");
 const { roomAgentsFromCapabilities } = require("./chat-agents");
@@ -389,7 +390,7 @@ function createChatFeature(options) {
       try {
         policy = ["claude", "codex"].includes(providerId) ? toolContext(meta, agent.id)
           : { settings: defaultToolSettings(), revision: null };
-        if (providerId === "codex" && config.autoApprove && policy.settings.rules.length) {
+        if (["claude", "codex"].includes(providerId) && config.autoApprove && policy.settings.rules.length) {
           throw new Error("저장된 승인 규칙과 전체 자동 승인을 함께 사용할 수 없습니다. 자동 승인을 끄거나 규칙을 삭제해 주세요.");
         }
       } catch (error) { return { promise: Promise.resolve({ ok: false, error: error.message }), cancel() {} }; }
@@ -471,6 +472,7 @@ function createChatFeature(options) {
             const scope = {
               providerId, profileKey: config.profileKey || null, activeKey, home,
               cwd: invocation.cwd, permissionMode, autoApprove: invocationInput.autoApprove,
+              ...(claudeApprovalTransport(providerId, permissionMode, invocationInput.autoApprove) ? { approvalTransport: "claude-stdio" } : {}),
               ...(Object.values(policy.settings.tools).some(value => value === false) || policy.settings.rules.length
                 ? { toolPolicy: policy.revision } : {}),
             };
@@ -573,26 +575,27 @@ function createChatFeature(options) {
             runId,
             onCancel: execution.onCancel,
           };
+          const requestApproval = approval => {
+            const isCurrent = () => {
+              try { return !cancelled && store?.hasSession(sessionId) && approvalScope(store.readMeta(sessionId)) === expectedApprovalScope; }
+              catch { return false; }
+            };
+            if (!isCurrent() || approval.signal?.aborted) return Promise.resolve(false);
+            const rule = evaluateApproval(policy.settings, approval.target, meta.workspace);
+            if (rule) {
+              store.appendEvent(sessionId, { kind: "tool-rule-decision", agentId: agent.id, runId,
+                ruleId: rule.id, effect: rule.effect, requestKind: rule.kind, revision: policy.revision });
+              onEvent({ kind: "status", label: rule.effect === "allow" ? "저장된 규칙으로 이번 승인 요청을 허용했습니다." : "저장된 규칙으로 이번 승인 요청을 거부했습니다." });
+              return Promise.resolve(rule.effect === "allow");
+            }
+            return callApprovals.request({ ...approval, sessionId, agentId: agent.id, runId, isCurrent });
+          };
           const processRun = approvalTransport(providerId, permissionMode, invocationInput.autoApprove)
             ? runCodexApprovalTurn({ ...runOptions, argv: [...(account ? FILE_AUTH_ARGS : []), ...(runtime?.argv || [])],
               cliSessionId: native.cliSessionId, model: agent.model, effort: agent.effort,
-              imagePaths: enriched.filter((_, index) => invocation.deliveries[index]?.method === "native-image").map(file => file.path),
-              requestApproval: approval => {
-                const isCurrent = () => {
-                  try { return !cancelled && store?.hasSession(sessionId) && approvalScope(store.readMeta(sessionId)) === expectedApprovalScope; }
-                  catch { return false; }
-                };
-                if (!isCurrent() || approval.signal?.aborted) return Promise.resolve(false);
-                const rule = evaluateApproval(policy.settings, approval.target, meta.workspace);
-                if (rule) {
-                  store.appendEvent(sessionId, { kind: "tool-rule-decision", agentId: agent.id, runId,
-                    ruleId: rule.id, effect: rule.effect, requestKind: rule.kind, revision: policy.revision });
-                  onEvent({ kind: "status", label: rule.effect === "allow" ? "저장된 규칙으로 이번 승인 요청을 허용했습니다." : "저장된 규칙으로 이번 승인 요청을 거부했습니다." });
-                  return Promise.resolve(rule.effect === "allow");
-                }
-                return callApprovals.request({ ...approval, sessionId, agentId: agent.id, runId, isCurrent });
-              } })
-            : runAgentProcess(runOptions);
+              imagePaths: enriched.filter((_, index) => invocation.deliveries[index]?.method === "native-image").map(file => file.path), requestApproval })
+            : claudeApprovalTransport(providerId, permissionMode, invocationInput.autoApprove)
+              ? runClaudeApprovalTurn({ ...runOptions, requestApproval }) : runAgentProcess(runOptions);
           const completion = processRun.promise.then((result) => {
             result = { ...result, sideEffectsPossible: performedWork,
               ...(appliedModel ? { appliedModel } : {}) };
@@ -1125,7 +1128,7 @@ function createChatFeature(options) {
         }
         if (typeof patch?.autoApprove === "boolean") {
           const providerId = record.providerId || record.id;
-          if (patch.autoApprove && providerId === "codex" && toolContext(meta, agentId).settings.rules.length) {
+          if (patch.autoApprove && ["claude", "codex"].includes(providerId) && toolContext(meta, agentId).settings.rules.length) {
             throw new Error("규칙이 저장된 동안 전체 자동 승인을 켤 수 없습니다. 규칙을 삭제하거나 자동 승인 끔을 유지해 주세요.");
           }
           if (patch.autoApprove && (store.readMeta(sessionId)?.agents?.[agentId]?.providerId || agentId) === "grok") {

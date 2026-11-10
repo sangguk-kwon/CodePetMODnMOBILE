@@ -93,12 +93,14 @@ test("claude workspace-read: 읽기 도구만 + add-dir", () => {
   assert.equal(argv[addDirIndex + 1], WORKSPACE);
 });
 
-test("claude workspace-write: acceptEdits까지만", () => {
+test("claude workspace-write uses native default permissions and bidirectional approval input", () => {
   const result = build("claude", { permissionMode: "workspace-write", workspace: WORKSPACE });
   assert.equal(result.ok, true);
   const argv = result.argv;
   const modeIndex = argv.indexOf("--permission-mode");
-  assert.equal(argv[modeIndex + 1], "acceptEdits");
+  assert.equal(argv[modeIndex + 1], "default");
+  assert.equal(argv[argv.indexOf("--input-format") + 1], "stream-json");
+  assert.equal(argv[argv.indexOf("--permission-prompt-tool") + 1], "stdio");
 });
 
 test("claude 모델/노력 플래그", () => {

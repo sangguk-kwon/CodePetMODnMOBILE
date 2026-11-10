@@ -535,8 +535,8 @@ class ChatRoom extends EventEmitter {
       }
       if (generation !== this.generation || result?.cancelled) return;
       emitEvent({ kind: "run-end", ok: Boolean(result?.ok) });
-      // Codex approvals are answered on the active App Server request, never by replaying with bypass flags.
-      if ((agent.providerId || agent.id) === "codex" || !result?.approvalRequired || result?.text || result?.sideEffectsPossible || agent.autoApprove || approvedRetry) break;
+      // Native approvals are answered on the active request, never by replaying with bypass flags.
+      if (["codex", "claude"].includes(agent.providerId || agent.id) || !result?.approvalRequired || result?.text || result?.sideEffectsPossible || agent.autoApprove || approvedRetry) break;
       const approved = await this.requestApproval(agent, result.approval);
       if (generation !== this.generation) return;
       if (!approved) {

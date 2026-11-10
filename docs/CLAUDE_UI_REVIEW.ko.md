@@ -25,6 +25,11 @@ Codex가 현재 기능에 필요한 UI까지 구현·검증한다. Claude는 나
 관련 파일: `src/chat.js`, `src/chat-tool-settings.js`, `src/chat-permissions.js`,
 `src/chat.html`, `src/chat.css`. 구현이 분리되면 새 UI 파일도 여기에 기록한다.
 
+2026-11-10 PR #18 후속: Codex가 Claude 호출별 승인 카드와 공통 규칙 설정·진단 안내를
+연결하고 모의 실행기로 Electron 화면을 검토했다. 이 화면들도 Claude의 추후 검토 대상이며
+본 과제는 계속 미완료다. 화면 검토 시 CLI 요청에만 적용되는 규칙과 시작 폴더의 의미,
+전체 자동 승인과의 차이, 기존 CLI 정책이 먼저 결정할 수 있음을 사용자가 이해하는지 살펴본다.
+
 ## 이월과 완료 규칙
 
 1. 후속 작업마다 STATUS의 현재 이월 과제에 이 ID·링크·미완료 상태를 유지한다.

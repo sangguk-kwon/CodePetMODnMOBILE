@@ -48,11 +48,11 @@ function parseClaudeLine(line, event = parseJsonLine(line)) {
   }
 
   if (event.type === "result") {
+    if (event.is_error || (event.subtype && event.subtype !== "success")) {
+      return { kind: "error", message: truncateLabel(event.result || event.errors?.join?.("; ") || event.subtype || "실행 오류", 200) };
+    }
     if (event.subtype === "success" && typeof event.result === "string") {
       return { kind: "final", text: event.result };
-    }
-    if (event.is_error || (event.subtype && event.subtype !== "success")) {
-      return { kind: "error", message: truncateLabel(event.result || event.subtype || "실행 오류", 200) };
     }
     return null;
   }

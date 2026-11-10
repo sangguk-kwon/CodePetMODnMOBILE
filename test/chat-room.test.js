@@ -32,11 +32,13 @@ async function settle(room) {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-test("turn choices survive preparation, live edits and approval retry; next turn takes the new choices", async () => {
+function legacyAgents() { return makeAgents().map(agent => ({ ...agent, available: true })); }
+
+test("legacy AGY turn choices survive preparation, live edits and approval retry", async () => {
   let releasePreparation;
   let prepareCount = 0;
   const calls = [];
-  const room = new ChatRoom({ agents: makeAgents().map(agent => ({ ...agent, model: "old-model", effort: "low" })),
+  const room = new ChatRoom({ agents: legacyAgents().map(agent => ({ ...agent, model: "old-model", effort: "low" })),
     prepareAgent: () => ++prepareCount === 1 ? new Promise(resolve => { releasePreparation = resolve; }) : Promise.resolve(),
     runAgent: ({ agent, autoApprove }) => {
       calls.push({ model: agent.model, effort: agent.effort, autoApprove });
@@ -46,12 +48,12 @@ test("turn choices survive preparation, live edits and approval retry; next turn
     },
   });
   room.once("approval-request", ({ approvalId }) => {
-    room.findAgent("claude").model = "newest-model";
+    room.findAgent("agy").model = "newest-model";
     room.resolveApproval(approvalId, "approve");
   });
-  room.sendUserMessage("@claude first");
-  room.findAgent("claude").model = "new-model";
-  room.findAgent("claude").effort = "high";
+  room.sendUserMessage("@agy first");
+  room.findAgent("agy").model = "new-model";
+  room.findAgent("agy").effort = "high";
   releasePreparation();
   await settle(room);
   assert.deepEqual(calls, [
@@ -62,7 +64,7 @@ test("turn choices survive preparation, live edits and approval retry; next turn
   assert.equal(room.messages.at(-1).agentMeta.effort, "low");
   assert.equal(room.messages.at(-1).agentMeta.appliedModel, "confirmed-model");
   assert.equal(room.messages.at(-1).agentMeta.appliedEffort, undefined);
-  room.sendUserMessage("@claude next");
+  room.sendUserMessage("@agy next");
   await settle(room);
   assert.deepEqual(calls[2], { model: "newest-model", effort: "high", autoApprove: false });
 });
@@ -949,10 +951,10 @@ test("사용자 개입은 동시 실행을 모두 중지하고 늦은 결과를 
   assert.match(room.messages.at(-1).text, /다음 차례는 사용자/);
 });
 
-test("권한 요청을 승인하면 같은 턴을 자동 승인으로 한 번 다시 실행한다", async () => {
+test("legacy AGY approval retains its one-time whole-turn compatibility retry", async () => {
   const calls = [];
   const room = new ChatRoom({
-    agents: makeAgents(),
+    agents: legacyAgents(),
     runAgent: ({ agent, autoApprove }) => {
       calls.push({ agentId: agent.id, autoApprove });
       return {
@@ -964,18 +966,18 @@ test("권한 요청을 승인하면 같은 턴을 자동 승인으로 한 번 �
     },
   });
   room.once("approval-request", ({ approvalId }) => room.resolveApproval(approvalId, "approve"));
-  room.sendUserMessage("@claude 실행해줘");
+  room.sendUserMessage("@agy 실행해줘");
   await settle(room);
   assert.deepEqual(calls, [
-    { agentId: "claude", autoApprove: false },
-    { agentId: "claude", autoApprove: true },
+    { agentId: "agy", autoApprove: false },
+    { agentId: "agy", autoApprove: true },
   ]);
   assert.equal(room.messages.at(-1).text, "승인 후 완료");
 });
 
-test("승인 후 재시도도 권한을 요구하면 상세 원인을 남긴다", async () => {
+test("legacy AGY retry failure retains detailed diagnostics", async () => {
   const room = new ChatRoom({
-    agents: makeAgents(),
+    agents: legacyAgents(),
     runAgent: () => ({
       promise: Promise.resolve({
         ok: false,
@@ -990,7 +992,7 @@ test("승인 후 재시도도 권한을 요구하면 상세 원인을 남긴다"
     }),
   });
   room.once("approval-request", ({ approvalId }) => room.resolveApproval(approvalId, "approve"));
-  room.sendUserMessage("@claude 실행해줘");
+  room.sendUserMessage("@agy 실행해줘");
   await settle(room);
 
   const failure = room.messages.at(-1);
@@ -1034,10 +1036,10 @@ test("자동 승인 상태에서 권한 요청이 반환되면 상세 원인을 
   assert.match(failure.text, /샌드박스 실행 차단/);
 });
 
-test("권한 요청을 거부하면 기존 문구를 유지한다", async () => {
+test("legacy AGY approval denial retains its explanation", async () => {
   const calls = [];
   const room = new ChatRoom({
-    agents: makeAgents(),
+    agents: legacyAgents(),
     runAgent: ({ autoApprove }) => {
       calls.push(autoApprove);
       return {
@@ -1051,7 +1053,7 @@ test("권한 요청을 거부하면 기존 문구를 유지한다", async () => 
     },
   });
   room.once("approval-request", ({ approvalId }) => room.resolveApproval(approvalId, "deny"));
-  room.sendUserMessage("@claude 실행해줘");
+  room.sendUserMessage("@agy 실행해줘");
   await settle(room);
 
   assert.deepEqual(calls, [false]);
@@ -1060,14 +1062,14 @@ test("권한 요청을 거부하면 기존 문구를 유지한다", async () => 
   assert.equal(failure.text, "권한 요청을 거부했습니다.");
 });
 
-test("Codex approval failures never replay the turn with bypass permissions", async () => {
+for (const provider of ["codex", "claude"]) test(`${provider} approval failures never replay the turn with bypass permissions`, async () => {
   let calls = 0, asked = 0;
   const room = new ChatRoom({ agents: makeAgents(), runAgent: () => {
     calls++;
     return { promise: Promise.resolve({ ok: false, approvalRequired: true, approval: { summary: "fixture" } }), cancel() {} };
   } });
   room.on("approval-request", () => { asked++; });
-  room.sendUserMessage("@codex fixture"); await settle(room);
+  room.sendUserMessage(`@${provider} fixture`); await settle(room);
   assert.equal(calls, 1); assert.equal(asked, 0);
   assert.equal(room.messages.at(-1).error, true);
 });

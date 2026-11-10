@@ -1,6 +1,6 @@
 # 진행 상태와 다음 작업
 
-기준일: **2026-11-10 (Asia/Seoul)**
+기준일: **2026-11-11 (Asia/Seoul)**
 
 ## 현재 상태
 
@@ -27,6 +27,13 @@ Android 개발 완료를 뜻하지 않는다. 과거 기록의 미검증 항목�
 ## 계속 이월하는 과제
 
 - [ ] **`CLAUDE-UI-REVIEW` / 담당 Claude / 미완료** — [UI 검토·자유 재구성 과제](CLAUDE_UI_REVIEW.ko.md). 사용량 부족으로 현재 UI 구현·검증은 Codex가 맡는다. Claude의 실제 검토 근거가 생길 때까지 후속 작업·PR·릴리스에도 계속 이월하며 자동 호출하지 않는다. Codex 자체 검증으로 완료 처리하지 않는다.
+
+## 2026-11-11 / PR #18 사용자 확인용 Windows 미리보기 빌드
+
+- 사용자 요청으로 PR #18의 소스 `92d1c81`을 이 Windows PC에서 Node `22.23.4`로 portable exe 빌드했다. `artifacts/pr18-preview/CodePet-PR18-preview.exe`, 체크섬 `SHA256SUMS`, 근거 `preview-report.json`을 로컬에 준비했다. 정식 버전은 올리지 않아 앱 내부 표시는 `1.2.6`이다.
+- portable exe의 격리된 임시 데이터 경로에서 준비·IPC·버전·정상 종료 검사를 통과했다. app.asar의 Claude 승인 실행기·공통 runner·IPC·도구 설정·설정 UI가 소스와 일치함을 확인했다. 로그: 저장소 밖 `dev-tools/logs/codepet-pr18-preview-build.log`.
+- 기능 코드는 이전 799 통과 결과에서 바뀌지 않았다. 현재 실행 중인 사용자 앱은 종료하지 않았으며 실제 구독 계정의 승인 흐름·사용자 화면 확인은 후속이다. PR #18 병합·릴리스 게시·원본 저장소 변경은 하지 않았다.
+- **계속 이월:** `CLAUDE-UI-REVIEW` 미완료. 사용자 미리보기 빌드와 Codex 검증으로 Claude의 검토를 대신하지 않는다.
 
 ## 2026-11-10 / Claude 호출별 승인·공통 규칙 연결 / PR #18
 

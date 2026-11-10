@@ -1,5 +1,21 @@
 # Release notes / 릴리즈 노트
 
+## 1.2.7 — 2026-11-11
+
+### English
+
+- Add native Claude per-call approvals and shared exact-command/file rules in workspace-write mode with full auto-approval off. Decisions resume the pending call without replaying the task.
+- Show Claude's verified permission mode and scoped rule settings in the existing participant UI. Preserve cancellation, session isolation and Codex approvals.
+- Validate with 799 passing tests, the installed Claude CLI connected to a local mock provider, and Electron UI checks. Real subscription-model approval flows remain unverified; MCP/browser management and separate environment controls remain planned.
+- Published from the unmerged PR #18 branch at the user's request so the existing app can find this build through its update button. PR merge remains with the user. Claude's deferred UI review is still pending.
+
+### 한국어
+
+- 작업공간 쓰기·전체 자동 승인 끔에서 Claude 호출별 승인과 공통 명령/파일 정확 일치 규칙을 연결합니다. 작업 전체를 다시 실행하지 않고 대기 중인 호출을 이어갑니다.
+- 기존 참가자 설정에 Claude가 확인한 권한 모드와 범위별 규칙을 표시합니다. 취소·세션 격리와 기존 Codex 승인을 유지합니다.
+- 테스트 799개·설치된 Claude CLI와 로컬 모의 공급자·Electron UI로 검증했습니다. 실제 구독 모델의 승인 흐름은 미검증이며 MCP/브라우저 관리·환경 별도 편집은 후속입니다.
+- 사용자 요청으로 앱 업데이트 버튼에서 받을 수 있도록 미병합 PR #18 브랜치에서 게시합니다. PR 병합은 사용자가 진행하며, Claude UI 검토는 계속 이월합니다.
+
 ## 1.2.6 — 2026-11-08
 
 ### English

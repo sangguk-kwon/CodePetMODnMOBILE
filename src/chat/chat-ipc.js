@@ -579,7 +579,7 @@ function createChatFeature(options) {
             }, (model, source) => {
               if (source === "assistant") assistantModelSeen = true;
               if (source === "assistant" || !assistantModelSeen) appliedModel = model;
-            }, event => onEvent({ kind: "progress", ...event })),
+            }, event => onEvent({ kind: "progress", ...event }), event => onEvent(event)),
             onEvent: (event) => {
               if (!cancelled && ["delta", "final"].includes(event?.kind)) native.delivered(throughId, rulesPlan);
               onEvent(event);
@@ -699,7 +699,7 @@ function createChatFeature(options) {
       loadPromptMessages: () => store.readMessagesPage(sessionId, {
         limit: DEFAULT_MAX_MESSAGES,
         maxBytes: Infinity,
-        filter: (message) => message.authorType !== "system" && !message.error,
+        filter: (message) => message.authorType !== "system" && !message.error && message.messageKind !== "commentary",
       }).messages,
       runAgent: makeRunAgent(sessionId),
       prepareAgent: async (payload) => {
@@ -733,7 +733,7 @@ function createChatFeature(options) {
         : message;
       broadcast("chat:message", { sessionId, message: outbound });
       broadcast("chat:sessions-changed", sessionsPayload());
-      if (message.authorType === "agent") notifyChat(sessionId, message.author, message.error ? "failed" : "completed", message.text);
+      if (message.authorType === "agent" && message.messageKind !== "commentary") notifyChat(sessionId, message.author, message.error ? "failed" : "completed", message.text);
     });
     room.on("typing", (payload) => {
       activity.typing(sessionId, payload);

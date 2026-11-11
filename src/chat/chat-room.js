@@ -455,7 +455,7 @@ class ChatRoom extends EventEmitter {
   promptMessages() {
     if (typeof this.loadPromptMessages === "function") return this.loadPromptMessages();
     return this.messages.filter(
-      (message) => message.authorType !== "system" && !message.error
+      (message) => message.authorType !== "system" && !message.error && message.messageKind !== "commentary"
     );
   }
 
@@ -496,11 +496,39 @@ class ChatRoom extends EventEmitter {
     let result;
     let runId;
     let approvedRetry = false;
+    let pendingPublic = null, lastCommentary = "", commentaryCount = 0;
+    const saveCommentary = () => {
+      if (!pendingPublic || pendingPublic.phase === "final_answer") return;
+      const entry = pendingPublic; pendingPublic = null;
+      if (!entry.text.trim() || commentaryCount >= 100) return;
+      commentaryCount++;
+      lastCommentary = entry.text.trim();
+      const extracted = extractEmoticons(lastCommentary, undefined, agent.providerId || agent.id);
+      this.appendMessage({ authorType: "agent", author: agent.id, runId,
+        messageKind: "commentary", text: extracted.text,
+        agentMeta: { providerId: agent.providerId || agent.id, name: agent.name, mention: agentMention(agent), model: agent.model, effort: agent.effort },
+        ...(!this.meta.workMode && extracted.emoticons.length ? { emoticons: extracted.emoticons, contentParts: extracted.parts } : {}) });
+    };
     for (let attempt = 0; attempt < 2; attempt += 1) {
       this.runSeq += 1;
       runId = `r${this.sessionId || "s"}-${require("node:crypto").randomUUID()}`;
       const emitEvent = (event) => {
         if (generation !== this.generation || !event) return;
+        if (event.kind === "public-start") {
+          saveCommentary();
+          this.emit("run-event", { runId, agentId: agent.id, kind: "public-reset" });
+          return;
+        }
+        if (event.kind === "public-complete") {
+          if (pendingPublic && pendingPublic.messageId !== event.messageId) saveCommentary();
+          pendingPublic = event;
+          this.emit("run-event", { runId, agentId: agent.id, kind: "public-text", text: event.text });
+          if (event.phase === "commentary") saveCommentary();
+          return;
+        }
+        // A subsequent real tool start establishes that the preceding public
+        // assistant text was an intermediate report, even without CLI phases.
+        if (event.kind === "progress" && event.state === "running" && !["thinking", "response"].includes(event.category)) saveCommentary();
         this.emit("run-event", { runId, agentId: agent.id, ...event });
       };
       this.setTyping(agent.id, true);
@@ -534,6 +562,7 @@ class ChatRoom extends EventEmitter {
         }
       }
       if (generation !== this.generation) return;
+      if (result && !pendingPublic && lastCommentary && String(result.text || "").trim() === lastCommentary) result = { ...result, text: "" };
       emitEvent({ kind: "run-end", ok: Boolean(result?.ok), cancelled: Boolean(result?.cancelled) });
       if (result?.cancelled) return;
       // Native approvals are answered on the active request, never by replaying with bypass flags.
@@ -585,6 +614,8 @@ class ChatRoom extends EventEmitter {
     }
 
     let rawText = String(result.text || "").trim();
+    // A commentary-only successful turn is not a second empty final answer.
+    if (!rawText && commentaryCount) return { ok: true };
     let discussionSignal = null;
     if (context.discussion) {
       const match = rawText.match(/\[\[CODEPET_DISCUSSION:(CONTINUE|AGREE|PASS|CONCLUDE)\]\]\s*$/i);

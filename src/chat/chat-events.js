@@ -68,6 +68,7 @@ function parseCodexLine(line, event = parseJsonLine(line)) {
   const item = event.item;
   if (typeof event.type === "string" && item && typeof item === "object") {
     if (event.type.startsWith("item.") && item.type === "agent_message" && item.text) {
+      if (item.phase === "commentary") return null;
       return event.type === "item.completed" ? { kind: "final", text: String(item.text) } : null;
     }
     if (item.type === "command_execution" && item.command) {
@@ -100,6 +101,7 @@ function parseCodexLine(line, event = parseJsonLine(line)) {
   const msg = event.msg;
   if (msg && typeof msg === "object") {
     if (msg.type === "agent_message" && msg.message) {
+      if (msg.phase === "commentary") return null;
       return { kind: "final", text: String(msg.message) };
     }
     if (msg.type === "agent_reasoning") return { kind: "status", label: "생각 중" };
@@ -197,14 +199,16 @@ function nativeSessionId(providerId, event) {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
 }
 
-function createLineParser(providerId, onTrace = null, onNativeSession = null, onAppliedModel = null, onProgress = null) {
+function createLineParser(providerId, onTrace = null, onNativeSession = null, onAppliedModel = null, onProgress = null, onPublicMessage = null) {
   const parser = { claude: parseClaudeLine, codex: parseCodexLine, agy: parseAgyLine, grok: parseGrokLine }[providerId];
   if (!parser) return null;
-  if (typeof onTrace !== "function" && typeof onNativeSession !== "function" && typeof onAppliedModel !== "function" && typeof onProgress !== "function") return parser;
+  if (typeof onTrace !== "function" && typeof onNativeSession !== "function" && typeof onAppliedModel !== "function" && typeof onProgress !== "function" && typeof onPublicMessage !== "function") return parser;
+  const observePublic = typeof onPublicMessage === "function" ? require("./chat-public-messages").publicMessages(providerId, onPublicMessage) : null;
   const { traceEvents } = require("./chat-trace-events");
   const pending = new Set();
   const tracedParser = (line) => {
     const parsed = parseJsonLine(line);
+    observePublic?.(parsed);
     if (typeof onProgress === "function") {
       try { for (const event of require("./chat-progress").progressEvents(providerId, parsed)) onProgress(event); }
       catch { /* Optional progress must not interrupt CLI output or native session linking. */ }
@@ -228,7 +232,10 @@ function createLineParser(providerId, onTrace = null, onNativeSession = null, on
         if (write?.then) pending.add(write);
       }
     } catch { /* Trace recording must never interrupt an agent run. */ }
-    return parser(line, parsed);
+    const result = parser(line, parsed);
+    // Subagent text belongs to its tool, never the main agent's public reply.
+    if (observePublic && parsed?.parent_tool_use_id && ["delta", "final"].includes(result?.kind)) return null;
+    return result;
   };
   tracedParser.flushTraces = () => {
     if (!pending.size) return null;

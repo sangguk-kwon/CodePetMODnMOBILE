@@ -4,22 +4,22 @@
 
 ## 현재 상태
 
-**Windows 최신 공개 배포는 v1.2.8이다. #19의 실행 환경 분리와 #20의 대화별 허용·취소/진행 이력 Phase 1을 사용자 포크에 게시했고 실제 업데이트 조회를 확인했다. PR #20은 미병합이며 사용자가 앱을 확인한 뒤 병합한다. 기본 절차도 배포→업데이트 확인→사용자 실사용 확인→사용자 PR 병합으로 AGENTS에 기록했다. 실제 구독 모델·사용자 앱 업데이트 교체·Claude UI 검토·브라우저/MCP 연결과 진행 보고 Phase 2, P1/P2/P3 전체 완료는 후속이다.**
+**Windows 최신 공개 배포는 v1.2.9다. #20은 사용자 병합 완료를 확인했고(`d8032f3`), 추가 요청한 Claude/Codex 공개 중간 설명의 순차 채팅 표시를 [PR #21](https://github.com/sangguk-kwon/CodePetMODnMOBILE/pull/21)에서 빌드·배포했다. 실제 업데이트 조회는 1.2.8→1.2.9 available, 1.2.9 최신이다. 별도 LLM 호출 없이 기존 공개 메시지만 사용한다. PR #21은 사용자 앱 확인 뒤 병합하도록 OPEN 유지한다. 실제 구독 모델·장기 작업·Claude UI 검토·브라우저/MCP와 P1/P2/P3 전체 완료는 후속이다.**
 
 | 항목 | 상태 | 근거/메모 |
 |---|---|---|
 | 공개 Fork 확보 | 확인 | `sangguk-kwon/CodePetMODnMOBILE`, 원본 `nokryong/CodePet` |
 | 원본 기준선 | 소스 기준 확인 | v1.2.2, `ca3d5c1ce2d7f96e904deb68ac88c660b8251371` |
 | 개발 지침·구조·로드맵 | 작성 | 이 커밋의 AGENTS와 docs 문서 |
-| 기존 테스트/앱 빌드 | v1.2.8 검증 완료 | 2026-11-11 Node 22.23.4: 812 통과, 실패 0, skip 1. Windows portable 준비·버전·IPC·정상 종료 확인 |
+| 기존 테스트/앱 빌드 | v1.2.9 검증 완료 | 2026-11-11 Node 22.23.4: 819 통과, 실패 0, skip 1. Windows portable 준비·버전·IPC·정상 종료 확인 |
 | Claude/Codex 실제 연동 | 변경된 실행부에서 제한된 조합 확인 | Claude 보고: createChatFeature + 실제 CLI로 모델 변경 후 동일 세션/스레드와 코드워드 보존. 추론 실제 적용은 미검증 |
 | Chrome/Codex 브라우저 | P1 예정 | 기존 연결 재사용 선호만 확정 |
 | PC 새 기능 | 일부 구현·배포 | 모델·추론 연속성, 날씨 버튼 겹침 수정, 반복 지침 축소. 지원 조합 확대·호출별 승인·브라우저 검증은 남음 |
-| 도구 설정·호출별 승인 | v1.2.8 배포, #20 미병합 | 승인 카드 ▼로 같은 명령/개별 파일 변경을 대화에 저장·취소. 실제 구독 공급자·MCP/브라우저·추가 경로/네트워크 편집 후속 |
-| 실시간 작업 진행 보고 | Phase 1 v1.2.8 배포 | Claude/Codex 공통 진행 이력·접기/펼치기·경과시간·취소/실패·복원. 실제 CLI+로컬 모의 공급자 검증. Phase 2 미구현 |
+| 도구 설정·호출별 승인 | v1.2.8 배포, #20 병합 완료 | 승인 카드 ▼로 같은 명령/개별 파일 변경을 대화에 저장·취소. 실제 구독 공급자·MCP/브라우저·추가 경로/네트워크 편집 후속 |
+| 실시간 작업 진행 보고 | Phase 1 + Phase 2 공개 중간 설명 1차 v1.2.9 배포 | 중간 설명을 일반 채팅에 저장·복원하고 최종 답변과 분리. 실제 CLI+로컬 모의 공급자·Electron UI 검증. 실제 구독 빈도·비용 계측은 후속 |
 | Android 프로젝트/APK | 미구현 | Kotlin/Compose 방향만 문서화 |
 | 원격 서버·페어링·알림 | 미구현 | 서비스 배포/포트 공개/기기 연결 없음 |
-| 개조판 업데이트/릴리스 | Windows v1.2.8 게시 완료 | 포크 조회·재다운로드 체크섬·패키지 실행 검증 완료. 설치된 앱의 실제 업데이트 교체·승인 실사용은 별도 확인 필요 |
+| 개조판 업데이트/릴리스 | Windows v1.2.9 게시 완료 | 포크 조회·재다운로드 체크섬·패키지 실행 검증 완료. 설치된 앱의 실제 업데이트 교체·승인 실사용은 별도 확인 필요 |
 
 단계별 완료 여부는 아래 기록의 검증 범위에 따른다. 위 배포 사실만으로 PC 전체 흐름이나
 Android 개발 완료를 뜻하지 않는다. 과거 기록의 미검증 항목은 이후 기록과 함께 읽는다.
@@ -27,6 +27,19 @@ Android 개발 완료를 뜻하지 않는다. 과거 기록의 미검증 항목�
 ## 계속 이월하는 과제
 
 - [ ] **`CLAUDE-UI-REVIEW` / 담당 Claude / 미완료** — [UI 검토·자유 재구성 과제](CLAUDE_UI_REVIEW.ko.md). 사용량 부족으로 현재 UI 구현·검증은 Codex가 맡는다. Claude의 실제 검토 근거가 생길 때까지 후속 작업·PR·릴리스에도 계속 이월하며 자동 호출하지 않는다. Codex 자체 검증으로 완료 처리하지 않는다.
+
+## 2026-11-11 / 일반 채팅의 순차 중간 설명 / v1.2.9 준비
+
+배포 완료: [v1.2.9](https://github.com/sangguk-kwon/CodePetMODnMOBILE/releases/tag/v1.2.9), [PR #21](https://github.com/sangguk-kwon/CodePetMODnMOBILE/pull/21)은 OPEN으로 유지한다. 태그/빌드 소스 `ef4093f350787e76e16591689892b16cf7ac99b3`. Windows x64 exe **170,585,949 bytes**, SHA-256 `feb3eac20ae6b8b1bf40172af373b59d9127f211151ddafc96f732fd39d3a877`. 초안 업로드→재다운로드→로컬/다운로드/SHA256SUMS 동일 검증 후 최신 정식 릴리스로 공개했다. 실제 AppUpdateChecker 1.2.8에서 `available`, 1.2.9에서 `up-to-date`와 포크 exe/체크섬 URL을 확인했다.
+
+처음 사용한 지정 Node 경로가 없어 시스템 22.17.0으로 실행된 것을 발견해, 공식 Node 22.23.4 zip/SHASUMS 검증 후 지정 버전으로 **전체 테스트와 Windows 빌드를 다시 실행**했다. 최종 배포 파일은 이 재빌드 산출물이며 portable 준비·버전 1.2.9·IPC·정상 종료 및 app.asar 주요 소스 일치를 확인했다. 근거: 저장소 밖 `dev-tools/logs/codepet-v129-tests.log`, `codepet-v129-build.log`, `codepet-v129-asar.json`, `codepet-v129-artifact.json`, `codepet-v129-update-check.json`. 사용자 앱은 강제 종료/교체하지 않았다.
+
+- Node `22.23.4` 전체 테스트 **819 통과, 실패 0, skip 1**. 로그 `dev-tools/logs/codepet-v129-tests.log`. 버전·lockfile·설정 표시와 한영 변경 내역은 `1.2.9`다. Windows 빌드·패키지 확인 후 포크 최신 릴리스에 게시하며 사용자 PR 병합은 대신 하지 않는다.
+- #20 병합을 확인하고 최신 `origin/develop`의 `d8032f3`에서 `feat/inline-agent-updates`로 분기했다. 사용자가 직접 요청한 공개 자연어 보고를 기존 도구 실행 이력보다 앞에 일반 채팅으로 표시한다.
+- 공개 text/commentary만 저장하고 다음 작업의 생각 중/도구 상태를 이어 표시한다. 최종 답변은 별도이며 중간 @언급·토론 문구는 실행하지 않는다. 이력은 기본 접힌 도구 실행 기록으로 유지한다. 추가 호출/생성 프롬프트 없이 단일 메시지 안내만 정정했다.
+- 설치된 Claude와 Codex + 로컬 모의 공급자에서 중간 text/commentary와 final을 확인했다. Claude Bash/Write 승인·거부·규칙·재개, Codex 승인·거부·규칙·성공 스레드 재개·제한 자동 승인을 검증했다. Codex의 거부로 중단된 스레드에 남은 취소 continuation이 모의 규칙 검증을 가로막아, deny 규칙은 새 스레드에서 검증하고 성공 스레드 재개는 따로 검증한다. 이 실패를 실제 구독 모델 검증 성공으로 세지 않는다.
+- 실제 Electron 렌더러/IPC를 두 공급자별 모의 실행기로 확인했다. 중간 설명 2개→중복 없는 최종 1개, 승인 메뉴/이중 클릭·취소·세션 전환·재열기·기록 복원을 검증했다. 캡처: `artifacts/chat-call-approval-smoke/1794403226310/sequential-messages.png`(Codex), `1794403246717`(Claude). native 근거: `artifacts/claude-approval-smoke/1794403322972/report.json`, `artifacts/codex-approval-smoke/1794403447236/report.json`. 가상 데이터만 사용하며 실제 모델 과금 호출이 아니다.
+- 사용자가 보고 느끼는 문장 빈도·실제 업데이트 교체·장시간 실사용·비용 계측은 미검증이다. **`CLAUDE-UI-REVIEW`는 계속 미완료**이며 일반 채팅 배치도 검토 대상으로 이월한다.
 
 ## 2026-11-11 / v1.2.8 사용자 선확인 배포 검증 / PR #20
 

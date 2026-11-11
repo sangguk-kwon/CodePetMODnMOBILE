@@ -61,8 +61,11 @@ function buildAgentPrompt({
 }) {
   const agentsById = new Map(agents.map((entry) => [entry.id, entry]));
   const others = agents.filter((entry) => entry.id !== agent.id);
-  const recent = messages.slice(-maxMessages);
-  const omitted = messages.length - recent.length;
+  // Commentary is already in the native CLI session. Replaying it as new chat
+  // turns would add tokens and could turn a progress mention into a handoff.
+  const dialogue = messages.filter(message => message.messageKind !== "commentary");
+  const recent = dialogue.slice(-maxMessages);
+  const omitted = dialogue.length - recent.length;
 
   const lines = [];
   lines.push(
@@ -78,7 +81,7 @@ function buildAgentPrompt({
   lines.push("규칙:");
   lines.push("- 아래 대화의 마지막 메시지에 이어 자연스럽게 답하세요.");
   lines.push(
-    `- 출력 전체가 채팅 메시지 하나로 그대로 전송됩니다. "[@${agentMention(agent)}]" 같은 접두어나 서명을 붙이지 마세요.`
+    `- 사용자용 중간 설명은 작업 중 순서대로 표시되고 최종 답변은 별도로 전송됩니다. "[@${agentMention(agent)}]" 같은 접두어나 서명을 붙이지 마세요.`
   );
   if (others.length > 0 && mentionsEnabled) {
     lines.push(

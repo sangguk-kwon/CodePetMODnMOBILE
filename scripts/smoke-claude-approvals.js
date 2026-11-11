@@ -11,16 +11,19 @@ const { evaluateApproval, defaults } = require("../src/chat/tool-settings");
 const output = path.resolve("artifacts", "claude-approval-smoke", String(Date.now()));
 fs.mkdirSync(output, { recursive: true });
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codepet-claude-approval-"));
-const report = { root, output, fixtureProvider: true, turns: [], requests: [], progress: [] };
+const report = { root, output, fixtureProvider: true, turns: [], requests: [], progress: [], publicMessages: [] };
 function respond(res, content, stop) {
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
   const send = data => res.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
   send({ type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: "claude-fixture",
     content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } });
-  send({ type: "content_block_start", index: 0, content_block: content.type === "tool_use" ? { ...content, input: {} } : { type: "text", text: "" } });
-  send({ type: "content_block_delta", index: 0, delta: content.type === "tool_use"
-    ? { type: "input_json_delta", partial_json: JSON.stringify(content.input) } : { type: "text_delta", text: content.text } });
-  send({ type: "content_block_stop", index: 0 });
+  const blocks = content.type === "tool_use" ? [{ type: "text", text: "Checking the fixture before running the tool." }, content] : [content];
+  blocks.forEach((block, index) => {
+    send({ type: "content_block_start", index, content_block: block.type === "tool_use" ? { ...block, input: {} } : { type: "text", text: "" } });
+    send({ type: "content_block_delta", index, delta: block.type === "tool_use"
+      ? { type: "input_json_delta", partial_json: JSON.stringify(block.input) } : { type: "text_delta", text: block.text } });
+    send({ type: "content_block_stop", index });
+  });
   send({ type: "message_delta", delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 1 } });
   send({ type: "message_stop" }); res.end();
 }
@@ -63,7 +66,7 @@ async function main() {
       let decisions = 0;
       const base = { commandPath: command, env, cwd, argv: invocation.argv, timeoutMs: 45_000, initializeTimeoutMs: 15_000,
         prompt: "Run the local fixture tool once and finish.", parseLine: createLineParser("claude", null, id => { cliSessionId = id; }, null,
-          event => report.progress.push(event)) };
+          event => report.progress.push(event), event => report.publicMessages.push(event)) };
       const result = await runClaudeApprovalTurn({ ...base, requestApproval: async approval => {
         target = approval.target; detail = approval.detail; decisions++; return approved;
       } }).promise;
@@ -87,6 +90,8 @@ async function main() {
     }
     assert.ok(report.progress.some(event => event.state === "running"));
     assert.ok(report.progress.some(event => event.state === "completed" || event.state === "failed"));
+    assert.ok(report.publicMessages.some(event => event.text === "Checking the fixture before running the tool."));
+    assert.ok(report.publicMessages.some(event => event.text === "Local fixture finished."));
     report.ok = true;
     console.log(`PASS native Claude Bash/Write one-call allow/deny, rules and resume via local fixture: ${output}`);
   } finally {

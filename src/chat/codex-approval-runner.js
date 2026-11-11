@@ -99,7 +99,7 @@ function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], pr
       params.reason ? `요청 이유: ${safe(params.reason)}` : "",
       file && params.grantRoot ? `요청 경로: ${safe(params.grantRoot)}` : "",
       network ? "이 네트워크 승인 요청에 연결된 동일 대상의 대기 작업이 함께 해제될 수 있습니다." : "",
-      "이번 요청에만 응답합니다. 세션 허용 규칙을 저장하거나 전체 작업을 재시작하지 않습니다.",
+      "기본 허용은 이번 요청에만 응답합니다. CLI 세션 전체를 허용하거나 전체 작업을 재시작하지 않습니다.",
       "표시 내용은 비밀 값이 제거된 미리보기입니다.",
     ].filter(Boolean).join("\n");
     emit({ kind: "status", label: "도구 실행 승인을 기다리고 있습니다." });

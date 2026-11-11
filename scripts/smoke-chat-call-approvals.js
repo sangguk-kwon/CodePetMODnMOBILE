@@ -21,8 +21,16 @@ adapter[providerId === "claude" ? "runClaudeApprovalTurn" : "runCodexApprovalTur
   const controller = new AbortController();
   input.parseLine(JSON.stringify(providerId === "claude" ? { type: "system", subtype: "init", session_id: "11111111-2222-4333-8444-555555555555" }
     : { type: "thread.started", thread_id: "11111111-2222-4333-8444-555555555555" }));
-  return { promise: input.requestApproval({ summary: "명령 실행 승인", detail: "echo fixture", signal: controller.signal }).then(approved =>
-    controller.signal.aborted ? { ok: false, cancelled: true } : { ok: true, text: approved ? "Allowed fixture" : "Denied fixture" }),
+  const toolId = `tool-${runs}`;
+  input.parseLine(JSON.stringify(providerId === "claude" ? { type: "assistant", message: { content: [{ type: "tool_use", id: toolId, name: "Read", input: { file_path: "SECRET_PROGRESS_PATH" } }] } }
+    : { type: "item.started", item: { type: "command_execution", id: toolId, command: "npm test" } }));
+  return { promise: input.requestApproval({ summary: "명령 실행 승인", detail: "echo fixture", signal: controller.signal,
+    target: { kind: "command", command: "echo fixture", cwd: input.cwd } }).then(approved => {
+      if (controller.signal.aborted) return { ok: false, cancelled: true };
+      input.parseLine(JSON.stringify(providerId === "claude" ? { type: "user", message: { content: [{ type: "tool_result", tool_use_id: toolId, is_error: !approved, content: "SECRET_PROGRESS_OUTPUT" }] } }
+        : { type: "item.completed", item: { type: "command_execution", id: toolId, command: "npm test", exit_code: approved ? 0 : 1, aggregated_output: "SECRET_PROGRESS_OUTPUT" } }));
+      return { ok: true, text: approved ? "Allowed fixture" : "Denied fixture" };
+    }),
   cancel: () => controller.abort() };
 };
 const { createChatFeature } = require("../src/chat/chat-ipc");
@@ -76,6 +84,41 @@ async function main() {
     await js("window.chatApi.stop(activeSessionId)");
     await until(() => js("approvalBackdrop.hidden"));
     assert.equal(runs, 4);
+    await until(() => js("!turnState.current"));
+    await send();
+    assert.equal(await js("document.getElementById('approval-more').hidden"), false);
+    await js("document.getElementById('approval-more').open=true");
+    await pause(180);
+    fs.writeFileSync(path.join(output, "conversation-menu.png"), (await win.webContents.capturePage()).toPNG());
+    store.readOnly = true;
+    await js("document.getElementById('approval-conversation').click()");
+    await until(() => js("!approvalBackdrop.hidden && !approvalApprove.disabled"));
+    assert.equal(runs, 5, "failed grant save must not replay or finish the request");
+    store.readOnly = false;
+    await js("document.getElementById('approval-more').open=true");
+    await js("document.getElementById('approval-conversation').click()");
+    await until(() => js("!turnState.current && approvalBackdrop.hidden"));
+    const saved = await js(`window.chatApi.conversationGrants(activeSessionId,'${providerId}')`);
+    assert.equal(saved.grants.length, 1);
+    await js(`window.chatApi.send(activeSessionId,'@${providerId} repeat',[])`);
+    await until(async () => (await js("!turnState.current && approvalBackdrop.hidden && liveRuns.size===0")) && runs === 6);
+    assert.equal(runs, 6);
+    assert.equal(await js("messageList.textContent.includes('SECRET_PROGRESS')"), false);
+    assert.ok(await js("document.querySelectorAll('.progress-history').length > 0"));
+    await js("Array.from(document.querySelectorAll('.progress-history')).at(-1).open=true");
+    assert.match(await js("Array.from(document.querySelectorAll('.progress-history')).at(-1).textContent"), /완료/);
+    await pause(180);
+    fs.writeFileSync(path.join(output, "progress.png"), (await win.webContents.capturePage()).toPNG());
+    await js(`document.querySelector('.agent-chip[data-agent-id="${providerId}"]').click(); document.querySelector('.conversation-grants').open=true`);
+    await until(() => js("!!document.querySelector('.conversation-grant button')"));
+    await js("document.querySelector('.conversation-grant button').click()");
+    await until(() => js("document.querySelector('.conversation-grants').textContent.includes('저장된 허용 없음')"));
+    await js("closePopover()");
+    await send(); await js("approvalDeny.click()");
+    await until(() => js("!turnState.current"));
+    win.webContents.reload();
+    await until(() => js("typeof activeSessionId === 'string' && document.querySelectorAll('.progress-history').length > 0").catch(() => false));
+    assert.equal(await js("messageList.textContent.includes('SECRET_PROGRESS')"), false);
     assert.deepEqual(errors, []);
     console.log(`PASS ${providerId} call approval UI allow/deny/double-click/reload/cancel; screenshot: ${output}`);
   } finally { win.destroy(); await feature.shutdown(); store.close(); }

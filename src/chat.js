@@ -62,6 +62,9 @@ const approvalQueue = [];
 let activeApproval = null;
 const typingAgents = new Set();
 const liveRuns = new Map(); // runId → { item, textEl, statusEl, text }
+const progressSnapshots = new Map();
+const progressPanels = new WeakMap();
+setInterval(() => { for (const live of liveRuns.values()) live.progressPanel?.tick(); }, 1000);
 const historyLoadButton = document.getElementById("history-load");
 const displayedMessageIds = new Set();
 const messageLabelData = new WeakMap();
@@ -1072,6 +1075,10 @@ function openAgentPopover(anchor, agentId) {
       }), chatPermissions.createPanel({
         load: () => window.chatApi.agentPermissions(sessionId, agentId),
         isCurrent,
+      }), chatConversationGrants.createPanel({
+        load: () => window.chatApi.conversationGrants(sessionId, agentId),
+        remove: (id, scope) => window.chatApi.removeConversationGrant(sessionId, agentId, id, scope),
+        isCurrent,
       }));
     }
     if (config.profileKey) {
@@ -1661,6 +1668,13 @@ function renderMessage(message) {
   }
 
   body.append(meta, bubble);
+  if (message.runId) {
+    item.dataset.runId = message.runId;
+    const snapshot = progressSnapshots.get(message.runId);
+    if (snapshot) {
+      const panel = chatProgress.createPanel(snapshot); bubble.append(panel.element); progressPanels.set(item, panel);
+    }
+  }
 
   if (!isUser) {
     const avatar = makeAgentAvatar(agent || { id: message.author, providerId: message.agentMeta?.providerId, name, color });
@@ -1788,12 +1802,29 @@ function scheduleLiveUpdate() {
 function handleRunEvent(payload) {
   if (payload.sessionId !== activeSessionId) return;
   const { runId, agentId, kind } = payload;
+  if (kind === "progress") {
+    const snapshot = payload.progress;
+    if (!snapshot || snapshot.runId !== runId || snapshot.agentId !== agentId) return;
+    if ((progressSnapshots.get(runId)?.sequence || 0) >= snapshot.sequence) return;
+    progressSnapshots.set(runId, snapshot);
+    if (progressSnapshots.size > 40) progressSnapshots.delete(progressSnapshots.keys().next().value);
+    let item = [...messageList.children].find(node => node.dataset.runId === runId);
+    if (!item) { handleRunEvent({ ...payload, kind: "run-start" }); item = liveRuns.get(runId)?.item; }
+    if (!item) return;
+    let panel = progressPanels.get(item);
+    if (!panel) { panel = chatProgress.createPanel(snapshot); item.querySelector(".bubble").append(panel.element); progressPanels.set(item, panel); }
+    else panel.update(snapshot);
+    const live = liveRuns.get(runId); if (live) live.progressPanel = panel;
+    return;
+  }
 
   if (kind === "run-start") {
+    if (liveRuns.has(runId)) return;
     const stick = isNearBottom();
     const agent = agentById(agentId);
     const item = document.createElement("li");
     item.className = "message is-live";
+    item.dataset.runId = runId;
     const avatar = makeAgentAvatar(agent || { id: agentId, name: agentId });
     const body = document.createElement("div");
     body.className = "body";
@@ -1838,7 +1869,7 @@ function handleRunEvent(payload) {
     scheduleLiveUpdate();
   } else if (kind === "run-end") {
     // 정식 메시지가 곧 도착하므로 초안은 짧게 유지하되, 실패 시 즉시 제거합니다.
-    if (!payload.ok) {
+    if (!payload.ok && !live.progressPanel) {
       live.item.remove();
       liveRuns.delete(runId);
     }
@@ -2293,7 +2324,15 @@ function applyFullState(full) {
     typingAgents.clear();
     for (const agentId of full.session.typing || []) typingAgents.add(agentId);
     pendingAttachments = full.session.pendingAttachments || [];
+    progressSnapshots.clear();
+    for (const snapshot of full.session.progressRuns || []) progressSnapshots.set(snapshot.runId, snapshot);
     renderAllMessages(full.session.messages, full.session.history);
+    for (const snapshot of full.session.progressRuns || []) {
+      if (snapshot.state === "running" || snapshot.state === "cancelled" || snapshot.state === "unknown") {
+        const saved = progressSnapshots.get(snapshot.runId); progressSnapshots.delete(snapshot.runId);
+        handleRunEvent({ sessionId: activeSessionId, runId: snapshot.runId, agentId: snapshot.agentId, kind: "progress", progress: saved });
+      }
+    }
     // Restore only live call approvals when a window/session is reopened.
     for (let index = approvalQueue.length - 1; index >= 0; index--) {
       if (approvalQueue[index].sessionId === activeSessionId && approvalQueue[index].retryScope === "call") approvalQueue.splice(index, 1);
@@ -2347,7 +2386,10 @@ window.chatApi.onTurnState(({ sessionId, ...nextTurnState }) => {
   renderTurnQueue();
   if (!turnState.current) {
     cancelLiveUpdate();
-    for (const live of liveRuns.values()) live.item.remove();
+    for (const live of liveRuns.values()) {
+      if (!live.progressPanel) live.item.remove();
+      else live.item.classList.remove("is-live");
+    }
     liveRuns.clear();
   }
 });
@@ -2400,8 +2442,11 @@ function showNextApproval() {
   approvalDetail.textContent = [activeApproval.detail || "세부 정보가 없습니다.",
     activeApproval.expiresAt ? `승인 유효시간: ${new Date(activeApproval.expiresAt).toLocaleTimeString()}` : ""].filter(Boolean).join("\n\n");
   approvalApprove.textContent = activeApproval.retryScope === "call" ? "이번 요청 허용" : "이 턴 승인 후 다시 실행";
+  const more = document.getElementById("approval-more"), remember = document.getElementById("approval-conversation");
+  more.hidden = !activeApproval.conversationLabel; more.open = false;
+  remember.textContent = activeApproval.conversationLabel || "이 대화에서 같은 작업 허용";
   document.querySelector(".approval-warning").textContent = activeApproval.retryScope === "call"
-    ? "이번 요청에만 응답하고 같은 실행을 이어갑니다. 세션 허용 규칙을 저장하거나 샌드박스를 통째로 해제하지 않습니다."
+    ? "기본 허용은 이번 요청에만 적용하고 같은 실행을 이어갑니다. ▼ 메뉴로 저장한 같은 명령·파일 작업은 다음 메시지와 앱 재시작 후에도 유지되며, 대화 설정에서 취소할 수 있습니다. 모든 도구를 허용하는 기능은 아닙니다."
     : "이 실행 경로는 개별 명령 대신 이 턴 전체를 자동 승인 모드로 다시 실행합니다.";
   approvalBackdrop.hidden = false;
 }
@@ -2412,7 +2457,14 @@ async function answerApproval(decision) {
   approvalBackdrop.hidden = true;
   approvalApprove.disabled = true;
   approvalDeny.disabled = true;
-  try { await call(window.chatApi.approvalRespond(current.sessionId, current.approvalId, decision)); }
+  try {
+    const result = await call(window.chatApi.approvalRespond(current.sessionId, current.approvalId, decision));
+    if (!result && current.retryScope === "call") {
+      const state = await window.chatApi.state();
+      const pending = state.session?.pendingCallApprovals?.find(entry => entry.approvalId === current.approvalId);
+      if (pending) approvalQueue.unshift(pending);
+    }
+  }
   finally {
     approvalApprove.disabled = false;
     approvalDeny.disabled = false;
@@ -2421,6 +2473,7 @@ async function answerApproval(decision) {
 }
 approvalApprove.addEventListener("click", () => answerApproval("approve"));
 approvalDeny.addEventListener("click", () => answerApproval("deny"));
+document.getElementById("approval-conversation").addEventListener("click", () => answerApproval("approve-conversation"));
 window.chatApi.onApprovalRequest((payload) => {
   if (approvalQueue.some(entry => entry.approvalId === payload.approvalId) || activeApproval?.approvalId === payload.approvalId) return;
   approvalQueue.push(payload);

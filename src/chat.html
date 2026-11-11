@@ -169,6 +169,10 @@
         <div class="approval-actions">
           <button class="button" id="approval-deny" type="button">거부</button>
           <button class="button button-primary" id="approval-approve" type="button">이 턴 승인 후 다시 실행</button>
+          <details class="approval-more" id="approval-more" hidden>
+            <summary aria-label="추가 허용 옵션">▼</summary>
+            <button class="button" id="approval-conversation" type="button">이 대화에서 같은 작업 허용</button>
+          </details>
         </div>
       </section>
     </div>
@@ -177,6 +181,8 @@
     <script src="./chat-clipboard.js"></script>
     <script src="./chat-permissions.js"></script>
     <script src="./chat-tool-settings.js"></script>
+    <script src="./chat-progress-ui.js"></script>
+    <script src="./chat-conversation-grants.js"></script>
     <script src="./chat.js"></script>
   </body>
 </html>

@@ -498,7 +498,7 @@ class ChatRoom extends EventEmitter {
     let approvedRetry = false;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       this.runSeq += 1;
-      runId = `r${this.sessionId || "s"}-${this.runSeq}`;
+      runId = `r${this.sessionId || "s"}-${require("node:crypto").randomUUID()}`;
       const emitEvent = (event) => {
         if (generation !== this.generation || !event) return;
         this.emit("run-event", { runId, agentId: agent.id, ...event });
@@ -533,8 +533,9 @@ class ChatRoom extends EventEmitter {
           this.trackRunEnd();
         }
       }
-      if (generation !== this.generation || result?.cancelled) return;
-      emitEvent({ kind: "run-end", ok: Boolean(result?.ok) });
+      if (generation !== this.generation) return;
+      emitEvent({ kind: "run-end", ok: Boolean(result?.ok), cancelled: Boolean(result?.cancelled) });
+      if (result?.cancelled) return;
       // Native approvals are answered on the active request, never by replaying with bypass flags.
       if (["codex", "claude"].includes(agent.providerId || agent.id) || !result?.approvalRequired || result?.text || result?.sideEffectsPossible || agent.autoApprove || approvedRetry) break;
       const approved = await this.requestApproval(agent, result.approval);

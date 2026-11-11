@@ -11,7 +11,7 @@ const { evaluateApproval, defaults } = require("../src/chat/tool-settings");
 const output = path.resolve("artifacts", "claude-approval-smoke", String(Date.now()));
 fs.mkdirSync(output, { recursive: true });
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codepet-claude-approval-"));
-const report = { root, output, fixtureProvider: true, turns: [], requests: [] };
+const report = { root, output, fixtureProvider: true, turns: [], requests: [], progress: [] };
 function respond(res, content, stop) {
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
   const send = data => res.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -62,7 +62,8 @@ async function main() {
       let cliSessionId, target, detail;
       let decisions = 0;
       const base = { commandPath: command, env, cwd, argv: invocation.argv, timeoutMs: 45_000, initializeTimeoutMs: 15_000,
-        prompt: "Run the local fixture tool once and finish.", parseLine: createLineParser("claude", null, id => { cliSessionId = id; }) };
+        prompt: "Run the local fixture tool once and finish.", parseLine: createLineParser("claude", null, id => { cliSessionId = id; }, null,
+          event => report.progress.push(event)) };
       const result = await runClaudeApprovalTurn({ ...base, requestApproval: async approval => {
         target = approval.target; detail = approval.detail; decisions++; return approved;
       } }).promise;
@@ -84,6 +85,8 @@ async function main() {
       assert.equal(continued.ok, true, continued.error); assert.equal(ruleDecisions, 1); assert.equal(fs.existsSync(marker), approved);
       assert.equal(resumedId, cliSessionId);
     }
+    assert.ok(report.progress.some(event => event.state === "running"));
+    assert.ok(report.progress.some(event => event.state === "completed" || event.state === "failed"));
     report.ok = true;
     console.log(`PASS native Claude Bash/Write one-call allow/deny, rules and resume via local fixture: ${output}`);
   } finally {

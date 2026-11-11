@@ -12,11 +12,12 @@ class CallApprovals {
     return [...this.pending.values()].filter(entry => entry.public.sessionId === sessionId).map(entry => entry.public);
   }
 
-  request({ sessionId, agentId, runId, summary, detail, signal, isCurrent = () => true }) {
+  request({ sessionId, agentId, runId, summary, detail, signal, isCurrent = () => true, conversationLabel, onConversation }) {
     if (signal?.aborted || !isCurrent()) return Promise.resolve(false);
     return new Promise(resolve => {
       const approvalId = randomUUID();
       const publicEntry = { sessionId, agentId, runId, approvalId, summary, detail,
+        ...(typeof onConversation === "function" ? { conversationLabel } : {}),
         retryScope: "call", expiresAt: Date.now() + this.timeoutMs };
       const finish = (approved, reason) => {
         if (!this.pending.delete(approvalId)) return;
@@ -28,18 +29,22 @@ class CallApprovals {
       const abort = () => finish(false, "cancelled");
       const timer = setTimeout(() => finish(false, "expired"), this.timeoutMs);
       timer.unref?.();
-      this.pending.set(approvalId, { public: publicEntry, isCurrent, finish });
+      this.pending.set(approvalId, { public: publicEntry, isCurrent, finish, onConversation });
       signal?.addEventListener("abort", abort, { once: true });
       this.emit("request", publicEntry);
     });
   }
 
   respond(sessionId, approvalId, decision) {
-    if (!["approve", "deny"].includes(decision)) return false;
+    if (!["approve", "approve-conversation", "deny"].includes(decision)) return false;
     const entry = this.pending.get(approvalId);
     if (!entry || entry.public.sessionId !== sessionId) return false;
     if (!entry.isCurrent()) { entry.finish(false, "settings-changed"); return false; }
-    entry.finish(decision === "approve", decision === "approve" ? "approved" : "denied");
+    if (decision === "approve-conversation") {
+      if (typeof entry.onConversation !== "function") return false;
+      entry.onConversation(); // Persist before allowing execution; a write failure leaves the request pending.
+    }
+    entry.finish(decision !== "deny", decision !== "deny" ? "approved" : "denied");
     return true;
   }
 

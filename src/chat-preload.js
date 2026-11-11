@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld("chatApi", {
   agentPermissions: (sessionId, agentId) =>
     ipcRenderer.invoke(INVOKE.AGENT_PERMISSIONS, { sessionId, agentId }),
   toolSettings: (sessionId, agentId) => ipcRenderer.invoke(INVOKE.TOOLS_GET, { sessionId, agentId }),
+  conversationGrants: (sessionId, agentId) => ipcRenderer.invoke("chat:grants:list", { sessionId, agentId }),
+  removeConversationGrant: (sessionId, agentId, id, scope) => ipcRenderer.invoke("chat:grants:remove", { sessionId, agentId, id, scope }),
   saveToolSettings: (sessionId, agentId, settings, revision) =>
     ipcRenderer.invoke(INVOKE.TOOLS_SAVE, { sessionId, agentId, settings, revision }),
   accountsList: () => ipcRenderer.invoke(INVOKE.ACCOUNTS_LIST),

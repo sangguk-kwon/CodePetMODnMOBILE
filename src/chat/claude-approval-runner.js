@@ -72,7 +72,7 @@ function runClaudeApprovalTurn(options) {
       `CLI 시작 폴더: ${safe(cwd)}`,
       request.blocked_path ? `추가 접근 대상: ${safe(request.blocked_path)}` : "",
       input.dangerouslyDisableSandbox ? "추가 실행 권한: 이번 호출은 샌드박스 해제를 요청합니다." : "",
-      "이번 도구 호출에만 응답합니다. 전역/CLI 허용 규칙을 추가하거나 전체 작업을 재실행하지 않습니다.",
+      "기본 허용은 이번 도구 호출에만 응답합니다. 전역/CLI 허용 규칙을 추가하거나 전체 작업을 재실행하지 않습니다.",
       "파일 본문·변경 내용·비공개 추론은 표시하지 않습니다. 미리보기의 비밀 값은 제거됩니다."].filter(Boolean).join("\n");
     const controller = new AbortController();
     pending.set(id, controller);

@@ -20,6 +20,8 @@ async function fixture(t) {
     calls.push(input);
     const controller = new AbortController();
     input.parseLine(JSON.stringify({ type: "thread.started", thread_id: "11111111-2222-4333-8444-555555555555" }));
+    if (input.autoApprove) return { promise: Promise.resolve({ ok: true, text: "restricted automatically",
+      appliedPermissions: { approval: "never", sandbox: "workspaceWrite", verifiedAt: 1 } }), cancel() {} };
     const promise = input.requestApproval({ summary: "command", detail: "redacted preview", signal: controller.signal,
       target: { kind: "command", command: "echo exact", cwd: input.cwd } }).then(allow => ({ ok: true, text: allow ? "allowed" : "denied" }));
     return { promise, cancel: () => controller.abort() };
@@ -64,6 +66,31 @@ test("common settings IPC shares only the account/workspace scope, rejects stale
   f.store.updateMeta(f.other.id, { workspace: path.join(f.root, "other-workspace") });
   assert.deepEqual((await f.get("codex", f.other.id)).settings.rules, []);
   assert.equal((await f.invoke("chat:tools:get", { sessionId: f.session.id, agentId: "unknown" })).ok, false);
+});
+
+test("execution settings persist and route restricted automatic turns through verified App Server", async t => {
+  const f = await fixture(t);
+  const configure = (agentId, patch) => f.invoke("chat:agent:configure", { sessionId: f.session.id, agentId, patch });
+  assert.equal((await configure("claude", { codexSandbox: "workspace-write" })).ok, false);
+  assert.equal((await configure("codex", { codexSandbox: "danger-full-access" })).ok, false);
+  assert.equal((await configure("codex", { autoApprove: true, codexSandbox: "workspace-write" })).ok, true);
+  assert.equal(f.store.readMeta(f.session.id).agents.codex.codexSandbox, "workspace-write");
+  await f.invoke("chat:send", { sessionId: f.session.id, text: "@codex restricted" });
+  await f.until(session => !session.turnState.current && session.messages.at(-1)?.text === "restricted automatically");
+  assert.equal(f.calls.length, 1); assert.equal(f.executions.length, 0);
+  assert.equal(f.calls[0].autoApprove, true);
+  assert.equal((await f.state()).session.pendingCallApprovals.length, 0);
+  assert.equal((await configure("codex", { codexSandbox: "danger-full-access" })).ok, true);
+  assert.equal((await configure("codex", { autoApprove: false })).ok, true);
+  assert.equal(f.store.readMeta(f.session.id).agents.codex.codexSandbox, "workspace-write");
+  await f.invoke("chat:send", { sessionId: f.session.id, text: "@codex manual" });
+  const pending = await f.until(session => session.pendingCallApprovals.length === 1);
+  assert.equal(f.calls[1].cliSessionId, null, "permission changes start a fresh native scope");
+  const blocked = await configure("codex", { autoApprove: true, codexSandbox: "workspace-write" });
+  assert.equal(blocked.ok, false); assert.match(blocked.error, /실행 중/);
+  await f.invoke("chat:approval:respond", { sessionId: f.session.id, approvalId: pending.pendingCallApprovals[0].approvalId, decision: "deny" });
+  await f.until(session => !session.turnState.current);
+  assert.equal(f.store.readMeta(f.session.id).agents.codex.autoApprove, false);
 });
 
 test("persisted exact command rules decide live Codex calls without a dialog, bypass or whole-turn replay", async t => {

@@ -18,6 +18,8 @@ require("../src/chat/codex-approval-runner").runCodexApprovalTurn = input => {
   runs++;
   const controller = new AbortController();
   input.parseLine(JSON.stringify({ type: "thread.started", thread_id: "11111111-2222-4333-8444-555555555555" }));
+  if (input.autoApprove) return { promise: Promise.resolve({ ok: true, text: "Restricted automatic fixture",
+    appliedPermissions: { approval: "never", sandbox: "workspaceWrite", verifiedAt: Date.now() } }), cancel() {} };
   return { promise: input.requestApproval({ summary: "명령 실행 승인", detail: "echo fixture", signal: controller.signal,
     target: { kind: "command", command: "echo fixture", cwd: input.cwd } }).then(approved =>
     controller.signal.aborted ? { ok: false, cancelled: true } : { ok: true, text: approved ? "Rule allowed fixture" : "Rule denied fixture" }),
@@ -59,8 +61,56 @@ async function main() {
     await until(() => js("typeof activeSessionId === 'string' && agents.length === 2").catch(() => false));
     await js("localStorage.setItem(DOCTOR_SEEN_KEY, 'true'); doctorBackdrop.hidden=true; window.confirm=()=>true; true");
     await open("codex");
+    const environment = 'select[aria-label="Codex 실행 환경"]';
+    const automatic = "Array.from(document.querySelectorAll('.popover-field')).find(node=>node.firstChild.textContent==='도구 자동 승인').querySelector('input')";
+    assert.equal(await js(`document.querySelector('${environment}').value`), "workspace-write");
+    assert.equal(await js(`document.querySelector('${environment}').options[1].disabled`), true);
+    await js(`window.confirm=()=>false; ${automatic}.click()`);
+    assert.ok(!store.readMeta(session.id).agents?.codex?.autoApprove);
+    await js(`window.confirm=()=>true; ${automatic}.click()`);
+    await until(() => store.readMeta(session.id).agents?.codex?.autoApprove === true);
+    await until(() => js("popover.hidden"));
+    await open("codex");
+    assert.equal(store.readMeta(session.id).agents.codex.codexSandbox, "workspace-write");
+    await js("closePopover(); window.chatApi.send(activeSessionId,'@codex automatic fixture',[])");
+    await until(() => js("!turnState.current && messageList.textContent.includes('Restricted automatic fixture')"));
+    assert.equal(runs, 1); assert.equal(waiting, 0); runs=0;
+    await open("codex");
+    await js(`window.confirm=()=>false; document.querySelector('${environment}').value='danger-full-access'; document.querySelector('${environment}').dispatchEvent(new Event('change'))`);
+    assert.equal(await js(`document.querySelector('${environment}').value`), "workspace-write");
+    store.readOnly=true;
+    await js(`window.confirm=()=>true; document.querySelector('${environment}').value='danger-full-access'; document.querySelector('${environment}').dispatchEvent(new Event('change'))`);
+    await until(() => js(`!document.querySelector('${environment}').disabled`));
+    assert.equal(await js(`document.querySelector('${environment}').value`), "workspace-write", "rejected environment changes roll back");
+    store.readOnly=false;
+    // Loading legacy settings must preserve the old checkbox's full-access meaning.
+    const meta=store.readMeta(session.id); delete meta.agents.codex.codexSandbox;
+    store.updateMeta(session.id,{agents:meta.agents});
+    win.webContents.reload();
+    await until(() => js("typeof activeSessionId === 'string' && agents.length === 2").catch(() => false));
+    await js("doctorBackdrop.hidden=true; window.confirm=()=>true; true");
+    await open("codex");
+    assert.equal(await js(`document.querySelector('${environment}').value`), "danger-full-access");
+    assert.equal(store.readMeta(session.id).agents.codex.codexSandbox, undefined);
+    await js(`document.querySelector('${environment}').value='workspace-write'; document.querySelector('${environment}').dispatchEvent(new Event('change'))`);
+    await until(() => store.readMeta(session.id).agents.codex.codexSandbox === "workspace-write");
+    await until(() => js("popover.hidden"));
+    win.webContents.reload();
+    await until(() => js("typeof activeSessionId === 'string' && agents.length === 2").catch(() => false));
+    await js("doctorBackdrop.hidden=true; window.confirm=()=>true; true");
+    await open("codex");
+    assert.equal(await js(`document.querySelector('${environment}').value`), "workspace-write");
+    fs.writeFileSync(path.join(output,"execution.png"),(await win.webContents.capturePage()).toPNG());
+    await js(`${automatic}.click()`);
+    await until(() => store.readMeta(session.id).agents.codex.autoApprove === false);
+    await until(() => js("popover.hidden"));
+    await open("codex");
     assert.equal(await js(`Array.from(document.querySelectorAll('${q} .tool-settings-tools input')).every(node=>node.disabled)`), true);
-    await add("allow", "echo fixture"); await clickSave();
+    await add("allow", "echo fixture");
+    await js(`window.alert=()=>{}; ${automatic}.click()`);
+    assert.equal(await js(`${automatic}.checked`), false, "unsaved rules must survive approval setting changes");
+    assert.equal(await js(`document.querySelectorAll('${q} .tool-settings-rule').length`), 1);
+    await clickSave();
     assert.equal((await js("window.chatApi.toolSettings(activeSessionId,'codex')")).settings.rules.length, 1);
 
     // Rejected backend changes must not leave a visually enabled bypass checkbox.

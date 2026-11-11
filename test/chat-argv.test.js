@@ -40,6 +40,17 @@ function build(id, input = {}) {
   });
 }
 
+test("explicit restricted automatic execution never generates the sandbox bypass flag", () => {
+  const result = build("codex", { permissionMode: "workspace-write", workspace: WORKSPACE,
+    autoApprove: true, codexSandbox: "workspace-write" });
+  assert.equal(result.ok, true);
+  assert.ok(result.argv.includes("workspace-write"));
+  assert.ok(result.argv.includes('approval_policy="never"'));
+  assert.ok(!result.argv.some(arg => /dangerously|bypass/.test(arg)));
+  assert.equal(build("codex", { permissionMode: "workspace-write", workspace: WORKSPACE, codexSandbox: "danger-full-access" }).ok, false);
+  assert.equal(build("claude", { codexSandbox: "workspace-write" }).ok, false);
+});
+
 for (const id of ["codex", "claude", "agy", "grok"]) test(`${id} resumes only an exact native session and retains permission flags`, () => {
   const cliSessionId = "11111111-2222-4333-8444-555555555555";
   for (const permissionMode of ["chat", "workspace-read", "workspace-write"]) {

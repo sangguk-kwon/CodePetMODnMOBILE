@@ -958,28 +958,49 @@ function openAgentPopover(anchor, agentId) {
     root.append(appliesNextTurn);
 
     const autoApproveToggle = document.createElement("input");
+    const executionProviderId = agent.providerId || provider.id;
+    const sandboxSelect = executionProviderId === "codex" ? document.createElement("select") : null;
+    const executionBusy = Boolean(turnState.currentAgents?.includes(agentId));
+    let environmentSaving = false;
+    if (sandboxSelect) {
+      sandboxSelect.setAttribute("aria-label", "Codex 실행 환경");
+      for (const [value, label] of [["workspace-write", "작업공간 제한 유지"], ["danger-full-access", "제한 없는 실행 (전체 자동 승인)"]]) {
+        const option = document.createElement("option"); option.value = value; option.textContent = label; sandboxSelect.append(option);
+      }
+      sandboxSelect.value = config.codexSandbox || (config.autoApprove ? "danger-full-access" : "workspace-write");
+      sandboxSelect.disabled = !provider.available || sessionMeta?.permissionMode !== "workspace-write" || executionBusy;
+      sandboxSelect.options[1].disabled = !config.autoApprove;
+    }
     autoApproveToggle.type = "checkbox";
     autoApproveToggle.checked = Boolean(config.autoApprove);
     const requiresPatchApproval = agentId === "grok" && sessionMeta?.permissionMode === "workspace-write";
     autoApproveToggle.disabled = !provider.available
       || sessionMeta?.permissionMode !== "workspace-write"
-      || requiresPatchApproval;
+      || requiresPatchApproval || (executionProviderId === "codex" && executionBusy);
     autoApproveToggle.title = requiresPatchApproval
       ? "Grok 변경은 항상 복제본 diff를 검토한 뒤 적용해야 합니다"
       : autoApproveToggle.disabled
         ? "워크스페이스 쓰기 권한에서만 사용할 수 있습니다"
-        : "이 에이전트가 요청하는 도구 권한을 개별 확인 없이 승인합니다";
+        : executionProviderId === "codex" ? "개별 승인 요청을 생략합니다. 파일·네트워크 접근 범위는 선택한 실행 환경을 따릅니다"
+          : "이 에이전트가 요청하는 도구 권한을 개별 확인 없이 승인합니다";
     const autoApproveEligibleDisabled = autoApproveToggle.disabled;
     let autoApproveSaving = false;
     autoApproveToggle.addEventListener("change", async () => {
-      if (autoApproveSaving) return;
+      if (autoApproveSaving || environmentSaving) return;
       const requested = autoApproveToggle.checked;
       const previous = !requested;
+      if (root.querySelector('.tool-settings-dirty:not([hidden])')) {
+        autoApproveToggle.checked = previous;
+        window.alert("아래 도구·허용 규칙의 변경을 먼저 저장하거나 다시 불러온 뒤 승인 설정을 바꿔주세요.");
+        return;
+      }
       if (requested) {
         const confirmed = window.confirm(
           `${agent.name}의 도구 자동 승인을 켤까요?\n명령 실행과 파일 변경이 개별 확인 없이 진행됩니다. 신뢰하는 워크스페이스에서만 사용하세요.`
           + ({
-            codex: "\nCodex는 승인 확인과 샌드박스를 모두 우회합니다.",
+            codex: sandboxSelect?.value === "danger-full-access"
+              ? "\n선택한 실행 환경은 제한 없음입니다. 승인 확인과 샌드박스를 모두 우회합니다."
+              : "\n작업공간 제한과 기본 네트워크 차단을 유지합니다. 제한 밖 요청은 자동으로 추가 허용하지 않습니다.",
             claude: "\nClaude는 권한 확인만 생략하며 MCP를 연결하지 않습니다.",
           }[agent.providerId || provider.id] || "")
         );
@@ -988,23 +1009,61 @@ function openAgentPopover(anchor, agentId) {
       if (activeSessionId !== sessionId || !root.isConnected) return;
       autoApproveSaving = true;
       autoApproveToggle.disabled = true;
+      if (sandboxSelect) sandboxSelect.disabled = true;
       try {
-        const result = await configureAgent(agentId, { autoApprove: requested });
+        const result = await configureAgent(agentId, { autoApprove: requested,
+          ...(sandboxSelect ? { codexSandbox: requested ? sandboxSelect.value : "workspace-write" } : {}) });
         if (!result && activeSessionId === sessionId && root.isConnected) {
           autoApproveToggle.checked = previous;
+        }
+        if (result && activeSessionId === sessionId && root.isConnected) {
+          if (sandboxSelect) {
+            sandboxSelect.value = requested ? sandboxSelect.value : "workspace-write";
+            sandboxSelect.options[1].disabled = !requested;
+          }
+          closePopover();
         }
       } finally {
         autoApproveSaving = false;
         autoApproveToggle.disabled = autoApproveEligibleDisabled;
+        if (sandboxSelect) sandboxSelect.disabled = !provider.available || sessionMeta?.permissionMode !== "workspace-write" || executionBusy;
       }
     });
     root.append(makeField("도구 자동 승인", autoApproveToggle));
+    if (sandboxSelect) {
+      sandboxSelect.addEventListener("change", async () => {
+        const previous = sessionMeta?.agents?.[agentId]?.codexSandbox
+          || (sessionMeta?.agents?.[agentId]?.autoApprove ? "danger-full-access" : "workspace-write");
+        if (environmentSaving || autoApproveSaving || activeSessionId !== sessionId || !root.isConnected) return;
+        const requested = sandboxSelect.value;
+        if (root.querySelector('.tool-settings-dirty:not([hidden])')) {
+          sandboxSelect.value = previous;
+          window.alert("아래 도구·허용 규칙의 변경을 먼저 저장하거나 다시 불러온 뒤 실행 환경을 바꿔주세요.");
+          return;
+        }
+        if (requested === "danger-full-access" && !window.confirm("Codex의 샌드박스를 해제할까요?\n작업공간 밖 파일과 네트워크에 접근할 수 있으며, 전체 자동 승인 상태로 실행합니다.")) {
+          sandboxSelect.value = previous; return;
+        }
+        environmentSaving = true; sandboxSelect.disabled = true; autoApproveToggle.disabled = true;
+        try {
+          const result = await configureAgent(agentId, { codexSandbox: requested });
+          if (activeSessionId !== sessionId || !root.isConnected) return;
+          if (!result) sandboxSelect.value = previous;
+          else closePopover();
+        } finally {
+          environmentSaving = false;
+          sandboxSelect.disabled = !provider.available || sessionMeta?.permissionMode !== "workspace-write" || executionBusy;
+          autoApproveToggle.disabled = autoApproveEligibleDisabled;
+        }
+      });
+      root.append(makeField("실행 환경", sandboxSelect));
+    }
     if (["claude", "codex"].includes(agent.providerId || provider.id)) {
       const hint = document.createElement("p");
       hint.className = "popover-hint";
       hint.textContent = (agent.providerId || provider.id) === "codex"
-        ? "Codex 자동 승인은 승인 확인과 샌드박스를 모두 우회합니다. 저장된 승인 규칙과 동시에 사용할 수 없으므로, 자동 승인을 켜려면 먼저 아래 규칙을 삭제하세요. 네트워크·로그인 문제는 별도 확인이 필요합니다."
-        : "Claude 자동 승인을 끄면 CLI가 요청하는 도구 호출을 개별 허용·거부합니다. 켜면 권한 확인을 생략하며 저장된 승인 규칙과 함께 사용할 수 없습니다. 도구 추가나 MCP 연결과는 별개입니다.";
+        ? "자동 승인은 승인 요청 여부, 실행 환경은 샌드박스 제한을 정합니다. 제한 유지에서는 기본 네트워크가 차단되고, 제한 밖 요청을 자동으로 추가 허용하지 않습니다. 이전 자동 승인 설정은 제한 없는 실행으로 보존됩니다. 자동 승인과 저장된 규칙은 함께 사용할 수 없습니다. 네트워크·로그인 성공은 보장하지 않습니다."
+        : "Claude 자동 승인을 끄면 CLI가 요청하는 도구 호출을 개별 허용·거부합니다. 켜면 권한 확인을 생략하며 저장된 승인 규칙과 함께 사용할 수 없습니다. CodePet이 OS 샌드박스를 지정하는 기능은 없으며 도구 추가나 MCP 연결과는 별개입니다.";
       const isCurrent = () => activeSessionId === sessionId && root.isConnected;
       root.append(hint, chatToolSettings.createPanel({
         load: () => window.chatApi.toolSettings(sessionId, agentId),

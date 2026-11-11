@@ -6,6 +6,7 @@
 
 const PERMISSION_MODES = Object.freeze(["chat", "workspace-read", "workspace-write"]);
 const { selectionError } = require("../providers/provider-model-catalog");
+const { codexExecution } = require("./execution-settings");
 const INLINE_TEXT_LIMIT = 16 * 1024;
 
 const SAFE_OPTION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$/;
@@ -75,7 +76,7 @@ function claudeArgv({ permissionMode, workspace, model, effort, attachmentsDir, 
   return argv;
 }
 
-function codexArgv({ permissionMode, workspace, model, effort, outputFile, imagePaths, autoApprove, cliSessionId }) {
+function codexArgv({ permissionMode, workspace, model, effort, outputFile, imagePaths, autoApprove, codexSandbox, cliSessionId }) {
   // exec-only options must precede the resume subcommand (notably sandbox/cd/color).
   const argv = ["exec", ...(cliSessionId ? [] : ["-"]), "--skip-git-repo-check", "--color", "never", "--json"];
   if (outputFile) argv.push("-o", outputFile);
@@ -88,8 +89,11 @@ function codexArgv({ permissionMode, workspace, model, effort, outputFile, image
   } else if (permissionMode === "workspace-read") {
     argv.push("--sandbox", "read-only", "--cd", workspace);
   } else {
-    if (autoApprove) argv.push("--dangerously-bypass-approvals-and-sandbox", "--cd", workspace);
-    else argv.push("--sandbox", "workspace-write", "--cd", workspace);
+    if (codexExecution({ autoApprove, codexSandbox }, permissionMode).sandbox === "danger-full-access") argv.push("--dangerously-bypass-approvals-and-sandbox", "--cd", workspace);
+    else {
+      argv.push("--sandbox", "workspace-write", "--cd", workspace);
+      if (autoApprove) argv.push("-c", 'approval_policy="never"');
+    }
   }
   if (cliSessionId) argv.push("resume", cliSessionId, "-");
   return argv;
@@ -274,6 +278,7 @@ function buildAgentInvocation(input = {}) {
     attachmentsDir = null,
     outputFile = null,
     autoApprove = false,
+    codexSandbox,
     cliSessionId = null,
   } = input;
 
@@ -283,6 +288,10 @@ function buildAgentInvocation(input = {}) {
   if (!PERMISSION_MODES.includes(permissionMode)) {
     return { ok: false, error: `알 수 없는 권한 모드: ${permissionMode}` };
   }
+  try {
+    if (provider.id === "codex") codexExecution({ autoApprove, codexSandbox }, permissionMode);
+    else if (codexSandbox !== undefined) throw new Error("이 공급자의 실행 환경 편집은 지원하지 않습니다.");
+  } catch (error) { return { ok: false, error: error.message }; }
   if (permissionMode !== "chat" && !workspace) {
     return { ok: false, error: "워크스페이스가 선택되지 않았습니다." };
   }
@@ -342,6 +351,7 @@ function buildAgentInvocation(input = {}) {
       outputFile,
       imagePaths,
       autoApprove,
+      codexSandbox,
       cliSessionId,
     });
   } else if (provider.id === "agy") {

@@ -5,25 +5,28 @@ const path = require("node:path");
 const os = require("node:os");
 const capabilities = require("../src/providers/provider-capabilities");
 const approvalRunner = require("../src/chat/codex-approval-runner");
+const claudeRunner = require("../src/chat/claude-approval-runner");
 const runner = require("../src/chat/chat-agent-runner");
 const { ChatStore } = require("../src/chat/chat-store");
 
 const threadId = "11111111-2222-4333-8444-555555555555";
-test("chat IPC answers a live Codex call and preserves session without enabling auto approval", async t => {
+for (const providerId of ["codex", "claude"]) test(`chat IPC answers a live ${providerId} call and preserves its session and rules`, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "codepet-live-approval-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const record = { id: "codex", name: "Codex", status: "cli", commandPath: "fixture", catalogStatus: "ready",
+  const record = { id: providerId, name: providerId, status: "cli", commandPath: "fixture", catalogStatus: "ready",
     modelOptions: [{ id: "fixture" }], permissions: { "workspace-write": { supported: true }, chat: { supported: true } } };
-  t.mock.method(capabilities, "createCapabilityService", () => ({ defs: [record], getRecord: id => id === "codex" ? record : null, discover: async () => [record] }));
+  t.mock.method(capabilities, "createCapabilityService", () => ({ defs: [record], getRecord: id => id === providerId ? record : null, discover: async () => [record] }));
   t.mock.method(runner, "runAgentProcess", () => { throw new Error("must not restart as exec"); });
   const calls = [];
-  t.mock.method(approvalRunner, "runCodexApprovalTurn", input => {
+  t.mock.method(providerId === "codex" ? approvalRunner : claudeRunner, providerId === "codex" ? "runCodexApprovalTurn" : "runClaudeApprovalTurn", input => {
     calls.push(input);
     const controller = new AbortController();
-    input.parseLine(JSON.stringify({ type: "thread.started", thread_id: threadId }));
-    const promise = input.requestApproval({ summary: "fixture command", detail: "echo fixture", signal: controller.signal })
+    input.parseLine(JSON.stringify(providerId === "codex" ? { type: "thread.started", thread_id: threadId }
+      : { type: "system", subtype: "init", session_id: threadId }));
+    const promise = input.requestApproval({ summary: "fixture command", detail: "echo fixture", signal: controller.signal,
+      target: { kind: "command", command: "echo fixture", cwd: root } })
       .then(approved => ({ ok: true, text: approved ? "allowed" : "denied", appliedPermissions: {
-        approval: "on-request", sandbox: "workspaceWrite", verifiedAt: 1 } }));
+        approval: providerId === "codex" ? "on-request" : "default", sandbox: "workspaceWrite", verifiedAt: 1 } }));
     return { promise, cancel: () => controller.abort() };
   });
   const store = new ChatStore({ root: path.join(root, "store") }).init();
@@ -46,7 +49,7 @@ test("chat IPC answers a live Codex call and preserves session without enabling 
   }
   await state();
   for (const decision of ["approve", "deny"]) {
-    await invoke("chat:send", { sessionId: session.id, text: "@codex run" });
+    await invoke("chat:send", { sessionId: session.id, text: `@${providerId} run` });
     const current = await until(data => data.session.pendingCallApprovals.length === 1);
     const request = current.session.pendingCallApprovals[0];
     assert.equal(request.retryScope, "call");
@@ -57,10 +60,20 @@ test("chat IPC answers a live Codex call and preserves session without enabling 
     assert.equal(finished.session.messages.at(-1).text, decision === "approve" ? "allowed" : "denied");
   }
   assert.equal(calls.length, 2);
-  assert.equal(calls[0].cliSessionId, null); assert.equal(calls[1].cliSessionId, threadId);
+  if (providerId === "codex") { assert.equal(calls[0].cliSessionId, null); assert.equal(calls[1].cliSessionId, threadId); }
+  else { assert.ok(!calls[0].argv.includes("--resume")); assert.equal(calls[1].argv[calls[1].argv.indexOf("--resume") + 1], threadId); }
   assert.ok(calls.every(call => !call.argv.join(" ").includes("bypass")));
-  assert.ok(!store.readMeta(session.id).agents?.codex?.autoApprove);
-  const diagnostic = await invoke("chat:agent:permissions", { sessionId: session.id, agentId: "codex" });
-  assert.equal(diagnostic.diagnostics.launch.approval, "on-request");
+  assert.ok(!store.readMeta(session.id).agents?.[providerId]?.autoApprove);
+  const diagnostic = await invoke("chat:agent:permissions", { sessionId: session.id, agentId: providerId });
+  assert.equal(diagnostic.diagnostics.launch.approval, providerId === "codex" ? "on-request" : "default");
   assert.equal(diagnostic.diagnostics.lastApplied.sandbox, "workspaceWrite");
+  for (const effect of ["allow", "deny"]) {
+    const current = await invoke("chat:tools:get", { sessionId: session.id, agentId: providerId });
+    assert.equal((await invoke("chat:tools:save", { sessionId: session.id, agentId: providerId, revision: current.revision,
+      settings: { ...current.settings, rules: [{ id: "fixture", kind: "command", effect, match: "echo fixture" }] } })).ok, true);
+    await invoke("chat:send", { sessionId: session.id, text: `@${providerId} rule` });
+    const finished = await until(data => !data.session.turnState.current && data.session.pendingCallApprovals.length === 0);
+    assert.equal(finished.session.messages.at(-1).text, effect === "allow" ? "allowed" : "denied");
+  }
+  assert.equal(calls.length, 4);
 });

@@ -65,10 +65,11 @@ function claudeArgv({ permissionMode, workspace, model, effort, attachmentsDir, 
     if (hasPathDeliveries && attachmentsDir) argv.push("--add-dir", attachmentsDir);
     return argv;
   }
-  // workspace-write: 편집 자동 승인까지만. Bash 등 파괴 가능 도구는 기본 정책에 맡기고
-  // 위험 우회 플래그는 절대 쓰지 않습니다.
-  argv.push("--permission-mode", "acceptEdits", "--strict-mcp-config");
+  // Interactive permission requests stay on this CLI process. Explicit full
+  // auto-approval retains the legacy bypass path; it is never a one-call retry.
+  argv.push("--permission-mode", autoApprove ? "acceptEdits" : "default", "--strict-mcp-config");
   if (autoApprove) argv.push("--dangerously-skip-permissions");
+  else argv.push("--input-format", "stream-json", "--permission-prompt-tool", "stdio");
   argv.push("--add-dir", workspace);
   if (hasPathDeliveries && attachmentsDir) argv.push("--add-dir", attachmentsDir);
   return argv;

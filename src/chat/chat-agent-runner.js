@@ -179,6 +179,7 @@ function runAgentProcess({
   runId = "",
   onCancel = null,
   cancelGraceMs = 500,
+  stdioProtocol = null,
 }) {
   let child = null;
   let settled = false;
@@ -190,6 +191,7 @@ function runAgentProcess({
   let cancellation = null;
   let cancelCleanup = Promise.resolve();
   let closing;
+  const protocolController = new AbortController();
   const closed = new Promise((resolve) => { closing = resolve; });
 
   const requestCancelCleanup = () => {
@@ -233,6 +235,7 @@ function runAgentProcess({
   };
 
   const cleanup = () => {
+    protocolController.abort();
     if (timer) clearTimeout(timer);
     if (outputFile) {
       try {
@@ -355,6 +358,11 @@ function runAgentProcess({
         lineParts = [];
         lineBytes = 0;
         try {
+          if (stdioProtocol?.onLine?.(line) === true) {
+            if (end < 0) break;
+            start = end + 1;
+            continue;
+          }
           emit(parseLine(line));
         } catch (error) {
           cancelled = true;
@@ -489,7 +497,27 @@ function runAgentProcess({
     });
 
     child.stdin.on("error", () => {});
-    child.stdin.end(promptTransport === "stdin" ? prompt : "", "utf8");
+    if (stdioProtocol) {
+      const fail = (error) => {
+        if (settled) return;
+        cancelled = true;
+        terminate();
+        finish({ ok: false, error: redactSensitiveText(error?.message || String(error)) });
+      };
+      child.stdin.on("error", fail);
+      try {
+        if (promptTransport !== "stdin" || !parseLine) throw new Error("양방향 실행에는 stdin과 이벤트 파서가 필요합니다.");
+        stdioProtocol.start({
+          send: message => {
+            if (settled || cancelled || child.stdin.destroyed || child.stdin.writableEnded) return false;
+            child.stdin.write(JSON.stringify(message) + "\n", "utf8");
+            return true;
+          },
+          end: () => { if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end(); },
+          fail, signal: protocolController.signal,
+        });
+      } catch (error) { fail(error); }
+    } else child.stdin.end(promptTransport === "stdin" ? prompt : "", "utf8");
 
     if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
       timer = setTimeout(() => {
@@ -505,6 +533,7 @@ function runAgentProcess({
     if (settled || cancelled) return;
     userCancelled = true;
     cancelled = true;
+    protocolController.abort();
     terminate();
   };
 

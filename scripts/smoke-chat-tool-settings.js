@@ -94,8 +94,10 @@ async function main() {
     await open("codex");
     assert.match(await js(`document.querySelector('${q} .tool-settings-rule-meta').textContent`), /거부/);
     await open("claude");
-    assert.equal(await js(`document.querySelector('${q} .tool-settings-add .button').disabled`), true);
+    assert.equal(await js(`document.querySelector('${q} .tool-settings-add .button').disabled`), false);
     assert.equal(await js(`document.querySelectorAll('${q} .tool-settings-tools input:disabled').length`), 0);
+    await add("allow", "echo Claude fixture"); await clickSave();
+    assert.equal((await js("window.chatApi.toolSettings(activeSessionId,'claude')")).settings.rules[0].match, "echo Claude fixture");
     await js(`Array.from(document.querySelectorAll('${q} .tool-settings-tool')).find(node=>node.textContent.includes('(Bash)')).querySelector('input').click()`);
     await clickSave();
     assert.equal((await js("window.chatApi.toolSettings(activeSessionId,'claude')")).settings.tools.Bash, false);

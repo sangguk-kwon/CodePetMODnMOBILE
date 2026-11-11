@@ -28,7 +28,7 @@ test("permission snapshots derive bypass and sandbox boundaries from the real la
         const bypass = mode === "workspace-write" && requested;
         assert.equal(data.launch.ready, true);
         assert.equal(data.autoApprove, bypass);
-        assert.equal(data.launch.approval, bypass ? "bypass" : mode === "workspace-write" ? id === "claude" ? "acceptEdits" : "on-request" : "cli-default");
+        assert.equal(data.launch.approval, bypass ? "bypass" : mode === "workspace-write" ? id === "claude" ? "default" : "on-request" : "cli-default");
         assert.equal(data.launch.sandbox, id === "claude" ? "not-set-by-codepet" : bypass ? "disabled" : mode === "workspace-write" ? "workspace-write" : "read-only");
         assert.equal(data.launch.mcp, id === "claude" ? "excluded-by-codepet" : "not-verified");
         assert.equal(data.checks.network, "not-probed");

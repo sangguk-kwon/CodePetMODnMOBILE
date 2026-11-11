@@ -6,6 +6,7 @@ const os = require("node:os");
 const capabilities = require("../src/providers/provider-capabilities");
 const approvalRunner = require("../src/chat/codex-approval-runner");
 const runner = require("../src/chat/chat-agent-runner");
+const claudeApprovalRunner = require("../src/chat/claude-approval-runner");
 const { ChatStore } = require("../src/chat/chat-store");
 
 async function fixture(t) {
@@ -25,6 +26,8 @@ async function fixture(t) {
   });
   const executions = [];
   t.mock.method(runner, "runAgentProcess", input => { executions.push(input); return { promise: Promise.resolve({ ok: true, text: "done" }), cancel() {} }; });
+  // Invocation/settings test; the native wire protocol has its own real-child tests.
+  t.mock.method(claudeApprovalRunner, "runClaudeApprovalTurn", input => runner.runAgentProcess(input));
   const store = new ChatStore({ root: path.join(root, "store") }).init();
   const session = store.createSession({}), other = store.createSession({});
   store.patchConfig({ activeSessionId: session.id });
@@ -57,7 +60,7 @@ test("common settings IPC shares only the account/workspace scope, rejects stale
   assert.equal((await f.invoke("chat:agent:configure", { sessionId: f.session.id, agentId: "codex", patch: { autoApprove: true } })).ok, false);
   assert.deepEqual((await f.get("claude")).settings.rules, []);
   const claude = await f.get("claude");
-  assert.equal((await f.save({ settings: { ...claude.settings, rules: [rule] }, revision: claude.revision }, "claude")).ok, false);
+  assert.equal((await f.save({ settings: { ...claude.settings, rules: [rule] }, revision: claude.revision }, "claude")).ok, true);
   f.store.updateMeta(f.other.id, { workspace: path.join(f.root, "other-workspace") });
   assert.deepEqual((await f.get("codex", f.other.id)).settings.rules, []);
   assert.equal((await f.invoke("chat:tools:get", { sessionId: f.session.id, agentId: "unknown" })).ok, false);
@@ -99,7 +102,8 @@ test("Claude tool settings reach initial/resumed launch arguments and never chan
   const saved = await f.save({ settings: { ...initial.settings, tools: { Bash: false, WebSearch: false } }, revision: initial.revision }, "claude");
   assert.equal(saved.ok, true);
   await f.invoke("chat:send", { sessionId: f.session.id, text: "@claude inspect" });
-  await f.until(session => !session.turnState.current && session.messages.at(-1)?.author === "claude");
+  const finished = await f.until(session => !session.turnState.current && session.messages.at(-1)?.author === "claude");
+  assert.ok(!finished.messages.at(-1).error);
   assert.equal(f.executions.length, 1);
   assert.ok(f.executions[0].argv.includes("--disallowedTools"));
   assert.equal(f.executions[0].argv[f.executions[0].argv.indexOf("--disallowedTools") + 1], "Bash,WebSearch");

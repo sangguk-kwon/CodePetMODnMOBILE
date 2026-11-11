@@ -1004,7 +1004,7 @@ function openAgentPopover(anchor, agentId) {
       hint.className = "popover-hint";
       hint.textContent = (agent.providerId || provider.id) === "codex"
         ? "Codex 자동 승인은 승인 확인과 샌드박스를 모두 우회합니다. 저장된 승인 규칙과 동시에 사용할 수 없으므로, 자동 승인을 켜려면 먼저 아래 규칙을 삭제하세요. 네트워크·로그인 문제는 별도 확인이 필요합니다."
-        : "Claude 자동 승인은 권한 확인만 생략합니다. 도구를 추가하거나 MCP를 연결하지 않습니다.";
+        : "Claude 자동 승인을 끄면 CLI가 요청하는 도구 호출을 개별 허용·거부합니다. 켜면 권한 확인을 생략하며 저장된 승인 규칙과 함께 사용할 수 없습니다. 도구 추가나 MCP 연결과는 별개입니다.";
       const isCurrent = () => activeSessionId === sessionId && root.isConnected;
       root.append(hint, chatToolSettings.createPanel({
         load: () => window.chatApi.toolSettings(sessionId, agentId),

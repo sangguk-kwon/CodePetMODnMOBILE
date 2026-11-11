@@ -1,6 +1,6 @@
 # 실시간 작업 진행 보고 (Progress Updates) 구현 계획
 
-기준일: 2026-11-11 (Asia/Seoul) · 상태: **Phase 1 구현·미배포 / Phase 2 후속**
+기준일: 2026-11-11 (Asia/Seoul) · 상태: **Phase 1 v1.2.8 배포 / Phase 2 후속**
 
 ## 목표와 일정
 

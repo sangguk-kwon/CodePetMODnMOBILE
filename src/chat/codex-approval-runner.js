@@ -2,8 +2,8 @@ const path = require("node:path");
 const { CodexLiveRpc } = require("../live/codex-live-rpc");
 const { redactSensitiveText, buildRunDiagnostics } = require("./chat-run-diagnostics");
 
-function approvalTransport(providerId, permissionMode, autoApprove) {
-  return providerId === "codex" && permissionMode === "workspace-write" && !autoApprove;
+function approvalTransport(providerId, permissionMode, autoApprove, codexSandbox) {
+  return providerId === "codex" && permissionMode === "workspace-write" && (!autoApprove || codexSandbox === "workspace-write");
 }
 
 function workspacePolicy(cwd) {
@@ -13,7 +13,8 @@ function workspacePolicy(cwd) {
 
 function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], prompt, cliSessionId,
   model, effort, imagePaths = [], parseLine, onEvent = () => {}, requestApproval,
-  timeoutMs, rpcFactory = options => new CodexLiveRpc(options) }) {
+  timeoutMs, autoApprove = false, rpcFactory = options => new CodexLiveRpc(options) }) {
+  const approvalPolicy = autoApprove ? "never" : "on-request";
   let rpc, threadId, turnId, turnStarting = false, settled = false, cancelled = false;
   let answer = "", lastError = "", appliedModel, appliedPermissions;
   let deniedRequest = false;
@@ -40,7 +41,7 @@ function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], pr
     clearTimeout(timer);
     controller.abort();
     try { rpc?.close(); } catch { /* Cancellation must still settle the caller. */ }
-    const diagnostics = buildRunDiagnostics({ provider: "codex", lastError: result.error });
+    const diagnostics = buildRunDiagnostics({ provider: "codex", autoApprove, lastError: result.error });
     Promise.resolve().then(() => parseLine?.flushTraces?.()).then(() => resolveResult({ ...result, diagnostics,
       ...(appliedModel ? { appliedModel } : {}), ...(appliedPermissions ? { appliedPermissions } : {}) }),
     () => resolveResult({ ok: false, error: "도구 실행 기록을 저장하지 못했습니다.", diagnostics }));
@@ -59,6 +60,13 @@ function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], pr
     const file = message.method === "item/fileChange/requestApproval";
     if (!matching(params)) {
       rpc.send({ id: message.id, error: { code: -32602, message: "Inactive thread or turn" } });
+      return;
+    }
+    if (autoApprove) {
+      if (message.method === "item/permissions/requestApproval") respond(message, { permissions: {}, scope: "turn" });
+      else if (command || file) respond(message, { decision: "decline" });
+      else rpc.send({ id: message.id, error: { code: -32601, message: "User input is disabled for this approval policy" } });
+      emit({ kind: "status", label: "자동 실행의 제한 밖 요청은 허용하지 않았습니다. 작업공간 제한을 유지합니다." });
       return;
     }
     if (message.method === "item/permissions/requestApproval") {
@@ -153,7 +161,7 @@ function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], pr
   }
   (async () => {
     rpc = rpcFactory({ command: commandPath, needsShell, env, cwd,
-      argv: [...argv, "-c", 'sandbox_mode="workspace-write"', "-c", 'approval_policy="on-request"', "-c", 'approvals_reviewer="user"'] });
+      argv: [...argv, "-c", 'sandbox_mode="workspace-write"', "-c", `approval_policy="${approvalPolicy}"`, "-c", 'approvals_reviewer="user"'] });
     rpc.on("request", message => { serverRequest(message).catch(error => finish({ ok: false, text: answer, error: safe(error.message) })); });
     rpc.on("notification", message => { try { notification(message); } catch (error) { finish({ ok: false, error: safe(error.message) }); } });
     rpc.on("closed", error => { if (!settled) finish({ ok: false, text: answer, error: safe(error.message) }); });
@@ -180,13 +188,13 @@ function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], pr
       }
     } catch (error) { if (error.code !== -32601) throw error; }
     if (settled) return;
-    const params = { cwd, approvalPolicy: "on-request", approvalsReviewer: "user",
+    const params = { cwd, approvalPolicy, approvalsReviewer: "user",
       ...(permissionProfile ? { permissions: permissionProfile } : { sandbox: "workspace-write" }),
       ...(model && model !== "default" ? { model } : {}) };
     const response = await rpc.request(cliSessionId ? "thread/resume" : "thread/start",
       { ...params, ...(cliSessionId ? { threadId: cliSessionId } : {}) });
     if (settled) return;
-    if (response.approvalPolicy !== "on-request" || response.sandbox?.type !== "workspaceWrite" || response.sandbox.networkAccess === true
+    if (response.approvalPolicy !== approvalPolicy || response.sandbox?.type !== "workspaceWrite" || response.sandbox.networkAccess === true
       || (response.approvalsReviewer && response.approvalsReviewer !== "user")
       || typeof response.cwd !== "string" || !path.isAbsolute(response.cwd)
       || (process.platform === "win32" ? path.resolve(response.cwd).toLowerCase() !== path.resolve(cwd).toLowerCase()
@@ -202,7 +210,7 @@ function runCodexApprovalTurn({ commandPath, needsShell, env, cwd, argv = [], pr
       requestedTurnNetworkAccess: false, configured, verifiedAt: Date.now() };
     feed({ type: "thread.started", thread_id: threadId });
     turnStarting = true;
-    const started = await rpc.request("turn/start", { threadId, cwd, approvalPolicy: "on-request", approvalsReviewer: "user",
+    const started = await rpc.request("turn/start", { threadId, cwd, approvalPolicy, approvalsReviewer: "user",
       ...(permissionProfile ? { permissions: permissionProfile } : { sandboxPolicy: workspacePolicy(cwd) }),
       input: [{ type: "text", text: prompt }, ...imagePaths.map(file => ({ type: "localImage", path: file }))],
       ...(model && model !== "default" ? { model } : {}), ...(effort && effort !== "default" ? { effort } : {}) });

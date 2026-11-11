@@ -94,3 +94,13 @@ test("saved-account settings contexts do not prepare accounts, write files or re
   assert.throws(() => codex.settingsContext("missing"));
   assert.deepEqual(await fs.readdir(root), []);
 });
+
+test("restricted automatic approvals are diagnosed independently of sandbox bypass", async t => {
+  const root = await fixture(t);
+  const result = await diagnoseToolPermissions({ record: provider("codex"), sourceHome: root, chatCwd: root, workspace: root,
+    permissionMode: "workspace-write", config: { autoApprove: true, codexSandbox: "workspace-write" } });
+  assert.equal(result.launch.approval, "never");
+  assert.equal(result.launch.sandbox, "workspace-write");
+  assert.equal(result.launch.transport, "app-server");
+  assert.ok(!result.notes.some(note => note.includes("이전 자동 승인")));
+});

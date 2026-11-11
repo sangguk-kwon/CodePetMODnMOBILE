@@ -44,7 +44,8 @@ async function main() {
           input: `text(await tools.exec_command(${JSON.stringify({ cmd, sandbox_permissions: "require_escalated", justification: "CodePet local approval smoke" })}));` }
         : { type: "function_call", id: "fc-fixture", call_id: "call-fixture", name: tool.name, arguments: JSON.stringify(args) });
     } else {
-      report.toolOutputs = (body.input || []).filter(item => /call_output/.test(item.type)).map(item => String(item.output).slice(-2000));
+      report.toolOutputs = (body.input || []).filter(item => /call_output/.test(item.type))
+        .map(item => (typeof item.output === "string" ? item.output : JSON.stringify(item.output)).slice(-2000));
       sendResponse(res, { type: "message", id: "answer-fixture", role: "assistant", phase: "final_answer", content: [{ type: "output_text", text: "Local approval fixture finished.", annotations: [] }] });
     }
   });
@@ -115,6 +116,19 @@ async function main() {
     assert.equal(continued.ok, true, continued.error);
     report.resumed = true;
     assert.equal(report.approvals.length, 2);
+    if (process.env.CODEPET_SMOKE_RESTRICTED_AUTO === "1") {
+      first = true;
+      destination = path.join(path.dirname(resumeBase.cwd), "restricted-auto-outside-marker.txt");
+      const automatic = await runCodexApprovalTurn({ ...resumeBase, autoApprove: true,
+        prompt: "Local restricted automatic fixture", parseLine: createLineParser("codex"),
+        requestApproval: async () => { throw new Error("Restricted auto must not open an approval dialog"); } }).promise;
+      report.restrictedAuto = { result: automatic, markerExists: fs.existsSync(destination), toolOutputs: report.toolOutputs };
+      assert.equal(automatic.ok, true, automatic.error);
+      assert.equal(automatic.appliedPermissions.approval, "never");
+      assert.equal(automatic.appliedPermissions.sandbox, "workspaceWrite");
+      assert.equal(fs.existsSync(destination), false, "restricted auto must not execute escalated tools");
+      assert.match(JSON.stringify(report.toolOutputs), /never|not allowed|reject|escalat|denied/i);
+    }
     report.ok = true;
     console.log(`PASS actual Codex accept/decline using local fixture; report: ${root}`);
   } finally {

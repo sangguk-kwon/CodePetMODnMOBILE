@@ -131,3 +131,20 @@ test("a declined call that interrupts Codex remains a visible denial; targetless
   assert.equal(result.status, "denied"); assert.ok(!result.cancelled);
   assert.match(result.error, /거부/);
 });
+
+test("automatic approval keeps workspace sandbox and rejects unexpected escalation without a dialog", async () => {
+  const f = fixture({ autoApprove: true, threadResponse: { approvalPolicy: "never" } }); await tick();
+  const thread = f.calls.find(call => call.method === "thread/start").params;
+  const turn = f.calls.find(call => call.method === "turn/start").params;
+  assert.equal(thread.approvalPolicy, "never"); assert.equal(turn.approvalPolicy, "never");
+  assert.equal(turn.sandboxPolicy.type, "workspaceWrite"); assert.equal(turn.sandboxPolicy.networkAccess, false);
+  f.request(1); f.request(2, "item/permissions/requestApproval"); await tick();
+  assert.equal(f.pending.length, 0);
+  assert.deepEqual(f.sent.map(item => item.result), [{ decision: "decline" }, { permissions: {}, scope: "turn" }]);
+  f.complete(); const result = await f.run.promise;
+  assert.equal(result.ok, true); assert.equal(result.appliedPermissions.approval, "never");
+  assert.equal(result.diagnostics.autoApprove, true);
+  const mismatched = fixture({ autoApprove: true });
+  assert.equal((await mismatched.run.promise).ok, false);
+  assert.ok(!mismatched.calls.some(call => call.method === "turn/start"));
+});

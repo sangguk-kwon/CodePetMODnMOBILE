@@ -8,6 +8,7 @@ const {
 } = require("../providers/provider-capabilities");
 const { toDiagnostics } = require("../providers/provider-diagnostics");
 const { diagnoseToolPermissions } = require("./tool-permission-diagnostics");
+const { codexExecution, applyExecutionPatch } = require("./execution-settings");
 const { runCodexApprovalTurn, approvalTransport } = require("./codex-approval-runner");
 const { runClaudeApprovalTurn, claudeApprovalTransport } = require("./claude-approval-runner");
 const { CallApprovals } = require("./call-approvals");
@@ -420,6 +421,7 @@ function createChatFeature(options) {
         attachmentsDir,
         outputFile,
         autoApprove: (meta.permissionMode || "chat") === "workspace-write" && Boolean(config.autoApprove || autoApprove),
+        ...(providerId === "codex" ? { codexSandbox: config.codexSandbox } : {}),
       };
       const invocation = configuredInvocation(invocationInput);
       if (!invocation.ok) {
@@ -441,7 +443,7 @@ function createChatFeature(options) {
       const approvalScope = (currentMeta) => {
         const participant = currentMeta?.agents?.[agent.id] || {};
         return JSON.stringify([currentMeta?.workspace, currentMeta?.permissionMode || "chat", participant.profileKey || null,
-          Boolean(participant.autoApprove), activeAccountKey(providerId, participant),
+          Boolean(participant.autoApprove), participant.codexSandbox, activeAccountKey(providerId, participant),
           ["claude", "codex"].includes(providerId) ? toolContext(currentMeta, agent.id).revision : null]);
       };
       const expectedApprovalScope = approvalScope(meta);
@@ -472,6 +474,7 @@ function createChatFeature(options) {
             const scope = {
               providerId, profileKey: config.profileKey || null, activeKey, home,
               cwd: invocation.cwd, permissionMode, autoApprove: invocationInput.autoApprove,
+              ...(providerId === "codex" && config.codexSandbox !== undefined ? { codexSandbox: config.codexSandbox } : {}),
               ...(claudeApprovalTransport(providerId, permissionMode, invocationInput.autoApprove) ? { approvalTransport: "claude-stdio" } : {}),
               ...(Object.values(policy.settings.tools).some(value => value === false) || policy.settings.rules.length
                 ? { toolPolicy: policy.revision } : {}),
@@ -590,8 +593,9 @@ function createChatFeature(options) {
             }
             return callApprovals.request({ ...approval, sessionId, agentId: agent.id, runId, isCurrent });
           };
-          const processRun = approvalTransport(providerId, permissionMode, invocationInput.autoApprove)
+          const processRun = approvalTransport(providerId, permissionMode, invocationInput.autoApprove, config.codexSandbox)
             ? runCodexApprovalTurn({ ...runOptions, argv: [...(account ? FILE_AUTH_ARGS : []), ...(runtime?.argv || [])],
+              autoApprove: invocationInput.autoApprove,
               cliSessionId: native.cliSessionId, model: agent.model, effort: agent.effort,
               imagePaths: enriched.filter((_, index) => invocation.deliveries[index]?.method === "native-image").map(file => file.path), requestApproval })
             : claudeApprovalTransport(providerId, permissionMode, invocationInput.autoApprove)
@@ -674,7 +678,8 @@ function createChatFeature(options) {
         const latestMeta = store?.readMeta(sessionId);
         const providerId = payload?.agent?.providerId || payload?.agent?.id;
         const participant = latestMeta?.agents?.[payload?.agent?.id];
-        if (providerId === "codex" && !(latestMeta.permissionMode === "workspace-write" && (participant?.autoApprove || payload.autoApprove))) {
+        if (providerId === "codex" && codexExecution({ ...participant,
+          autoApprove: Boolean(participant?.autoApprove || payload.autoApprove) }, latestMeta.permissionMode || "chat").sandbox !== "danger-full-access") {
           const account = participant?.profileKey ? accountService("codex")?.prepare(participant.profileKey) : null;
           const env = account?.env || options.env || process.env;
           const sourceHome = env.CODEX_HOME || path.join(os.homedir(), ".codex");
@@ -1118,6 +1123,12 @@ function createChatFeature(options) {
         if (!record) throw new Error("알 수 없는 에이전트입니다.");
         const current = meta.agents?.[agentId] || {};
         const next = { ...current };
+        const providerId = record.providerId || record.id;
+        const executionChange = Object.hasOwn(patch || {}, "codexSandbox")
+          || (providerId === "codex" && typeof patch?.autoApprove === "boolean");
+        if (executionChange && rooms.get(sessionId)?.turnState().currentAgents.includes(agentId)) {
+          throw new Error("실행 중에는 승인·실행 환경을 바꿀 수 없습니다. 작업이 끝나거나 중지한 뒤 변경하세요.");
+        }
         Object.assign(next, identityPatch(patch, agentId, buildRoomAgents(meta)));
         if (typeof patch?.enabled === "boolean") next.enabled = patch.enabled;
         if (typeof patch?.model === "string") next.model = patch.model.slice(0, 64);
@@ -1139,6 +1150,7 @@ function createChatFeature(options) {
           }
           next.autoApprove = patch.autoApprove;
         }
+        applyExecutionPatch(providerId, next, patch, meta.permissionMode || "chat");
         store.updateMeta(sessionId, { agents: { ...meta.agents, [agentId]: next } });
         refreshRoomAgents(sessionId);
         return { meta: publicMeta(store.readMeta(sessionId)) };

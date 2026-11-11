@@ -18,6 +18,7 @@ window.chatPermissions = {
     const labels = {
       "cli-default": "CLI 기본 정책", default: "CLI 기본 승인·필요한 호출에서 확인", acceptEdits: "파일 편집 자동 허용", bypass: "승인 생략",
       "on-request": "필요한 호출에서 사용자 승인",
+      never: "개별 승인 요청 없음", workspaceWrite: "작업공간 쓰기", dangerFullAccess: "샌드박스 해제",
       unavailable: "실행 불가", "read-only": "읽기 전용", "workspace-write": "작업공간 쓰기",
       disabled: "해제", "not-set-by-codepet": "CodePet이 샌드박스를 지정하지 않음", unknown: "미확인",
       present: "파일 확인", missing: "파일 없음", invalid: "잘못된 JSON/규칙 형식",

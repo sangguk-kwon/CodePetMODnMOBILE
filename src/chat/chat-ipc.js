@@ -12,6 +12,8 @@ const { codexExecution, applyExecutionPatch } = require("./execution-settings");
 const { runCodexApprovalTurn, approvalTransport } = require("./codex-approval-runner");
 const { runClaudeApprovalTurn, claudeApprovalTransport } = require("./claude-approval-runner");
 const { CallApprovals } = require("./call-approvals");
+const { ConversationGrants } = require("./conversation-grants");
+const { ProgressHistory } = require("./chat-progress");
 const { ToolSettingsStore, settingsCapabilities, applyToolSettings, evaluateApproval, defaults: defaultToolSettings } = require("./tool-settings");
 const { roomAgentsFromCapabilities } = require("./chat-agents");
 const { identityPatch, aliasKey } = require("./chat-agent-identity");
@@ -141,6 +143,7 @@ function createChatFeature(options) {
 
   let store = null;
   let toolSettings = null;
+  let conversationGrants = null, progressHistory = null;
   const activeToolScopes = new Map();
   const pendingProcesses = new Set();
   let codexRuntime = null;
@@ -217,6 +220,8 @@ function createChatFeature(options) {
     try {
       store = options.store || new ChatStore({ root: options.storeRoot }).init();
       toolSettings = new ToolSettingsStore(store);
+      conversationGrants = new ConversationGrants(store);
+      progressHistory = new ProgressHistory(store, payload => broadcast("chat:run-event", payload));
       codexRuntime = options.codexRuntime || new CodexChatRuntime({ root: path.join(store.root, "runtime", "codex"), platform: options.platform });
       if (!store.readOnly) traceStore = new ChatTraceStore({ root: store.root, hasSession: (id) => store.hasSession(id) });
     } catch (error) {
@@ -345,6 +350,16 @@ function createChatFeature(options) {
     return false;
   }
 
+  function approvalScopeFor(meta, agentId) {
+    const participant = meta?.agents?.[agentId] || {};
+    const record = participantRecord(meta, agentId);
+    if (!record) throw new Error("참가자를 찾을 수 없습니다.");
+    const providerId = record.providerId || record.id;
+    return JSON.stringify([meta.workspace, meta.permissionMode || "chat", participant.profileKey || null,
+      Boolean(participant.autoApprove), participant.codexSandbox, activeAccountKey(providerId, participant),
+      ["claude", "codex"].includes(providerId) ? toolContext(meta, agentId).revision : null]);
+  }
+
   function notifyChat(sessionId, agentId, kind, text) {
     if (shuttingDown || !store?.hasSession(sessionId)) return;
     options.onChatNotification?.({ sessionId, agentId, kind, text,
@@ -441,10 +456,7 @@ function createChatFeature(options) {
 
       const permissionMode = meta.permissionMode || "chat";
       const approvalScope = (currentMeta) => {
-        const participant = currentMeta?.agents?.[agent.id] || {};
-        return JSON.stringify([currentMeta?.workspace, currentMeta?.permissionMode || "chat", participant.profileKey || null,
-          Boolean(participant.autoApprove), participant.codexSandbox, activeAccountKey(providerId, participant),
-          ["claude", "codex"].includes(providerId) ? toolContext(currentMeta, agent.id).revision : null]);
+        return approvalScopeFor(currentMeta, agent.id);
       };
       const expectedApprovalScope = approvalScope(meta);
       let native = null;
@@ -567,7 +579,7 @@ function createChatFeature(options) {
             }, (model, source) => {
               if (source === "assistant") assistantModelSeen = true;
               if (source === "assistant" || !assistantModelSeen) appliedModel = model;
-            }),
+            }, event => onEvent({ kind: "progress", ...event })),
             onEvent: (event) => {
               if (!cancelled && ["delta", "final"].includes(event?.kind)) native.delivered(throughId, rulesPlan);
               onEvent(event);
@@ -591,7 +603,23 @@ function createChatFeature(options) {
               onEvent({ kind: "status", label: rule.effect === "allow" ? "저장된 규칙으로 이번 승인 요청을 허용했습니다." : "저장된 규칙으로 이번 승인 요청을 거부했습니다." });
               return Promise.resolve(rule.effect === "allow");
             }
-            return callApprovals.request({ ...approval, sessionId, agentId: agent.id, runId, isCurrent });
+            const key = conversationGrants.key(agent.id, expectedApprovalScope);
+            if (conversationGrants.match(sessionId, key, approval.target, meta.workspace)) {
+              onEvent({ kind: "status", label: "이 대화에서 허용한 같은 작업을 실행합니다." });
+              return Promise.resolve(true);
+            }
+            const candidate = conversationGrants.candidate(approval.target, meta.workspace);
+            const waitingKey = require("node:crypto").randomBytes(32).toString("hex");
+            onEvent({ kind: "progress", category: "waiting", state: "running", key: waitingKey });
+            return callApprovals.request({ ...approval, sessionId, agentId: agent.id, runId, isCurrent,
+              ...(candidate ? { conversationLabel: candidate.kind === "command" ? "이 대화에서 같은 명령 허용" : "이 대화에서 이 파일 변경 허용",
+                onConversation: () => {
+                  if (!isCurrent() || !conversationGrants.candidate(approval.target, meta.workspace)) throw new Error("허용 범위가 변경됐습니다. 이번 요청만 확인해 주세요.");
+                  conversationGrants.add(sessionId, key, candidate);
+                } } : {}) }).then(approved => {
+                  onEvent({ kind: "progress", category: "waiting", state: approved ? "completed" : "denied", key: waitingKey });
+                  return approved;
+                });
           };
           const processRun = approvalTransport(providerId, permissionMode, invocationInput.autoApprove, config.codexSandbox)
             ? runCodexApprovalTurn({ ...runOptions, argv: [...(account ? FILE_AUTH_ARGS : []), ...(runtime?.argv || [])],
@@ -712,12 +740,21 @@ function createChatFeature(options) {
       notifyChat(sessionId, payload.agentId, payload.busy ? "working" : "cancelled");
       broadcast("chat:typing", { sessionId, ...payload });
     });
-    room.on("turn-state", (payload) => broadcast("chat:turn-state", { sessionId, ...payload }));
+    room.on("turn-state", (payload) => {
+      progressHistory.cancelMissing(sessionId, payload.currentAgents || []);
+      broadcast("chat:turn-state", { sessionId, ...payload });
+    });
     room.on("reset", () => broadcast("chat:reset", { sessionId }));
     room.on("run-event", (payload) => {
+      if (payload.kind === "progress") { progressHistory.update(sessionId, payload.runId, payload); return; }
+      if (payload.kind === "status" && /^(실행:|도구:)/.test(payload.label || "")) {
+        payload = { ...payload, label: payload.label.startsWith("실행:") ? "명령 실행 중" : "도구 실행 중" };
+      }
+      if (payload.kind === "run-end") progressHistory.finish(sessionId, payload.runId, payload.cancelled ? "cancelled" : payload.ok ? "completed" : "failed");
       activity.event(sessionId, payload);
       if (payload.kind === "status") notifyChat(sessionId, payload.agentId, "progress", payload.label);
       broadcast("chat:run-event", { sessionId, ...payload });
+      if (payload.kind === "run-start") progressHistory.start(sessionId, payload.runId, payload.agentId);
     });
     room.on("agents", (agents) => broadcast("chat:agents", { sessionId, agents }));
     room.on("approval-request", (payload) => {
@@ -757,6 +794,7 @@ function createChatFeature(options) {
       turnState: room.turnState(),
       pendingAttachments: [...pendingFor(sessionId).values()].map(publicAttachment),
       pendingCallApprovals: callApprovals.list(sessionId),
+      progressRuns: progressHistory.list(sessionId),
     };
   }
 
@@ -816,6 +854,23 @@ function createChatFeature(options) {
   }
 
   function registerIpcHandlers() {
+    ipcMain.handle("chat:grants:list", wrap(async ({ sessionId, agentId }) => {
+      requireSession(sessionId);
+      const meta = store.readMeta(sessionId);
+      toolContext(meta, agentId);
+      const scope = approvalScopeFor(meta, agentId);
+      const key = conversationGrants.key(agentId, scope);
+      return { scope: key, grants: conversationGrants.list(sessionId, key).map(rule => ({ ...rule,
+        match: require("./chat-run-diagnostics").redactSensitiveText(rule.match) })) };
+    }));
+    ipcMain.handle("chat:grants:remove", wrap(async ({ sessionId, agentId, id, scope }) => {
+      requireSession(sessionId);
+      const meta = store.readMeta(sessionId);
+      const key = conversationGrants.key(agentId, approvalScopeFor(meta, agentId));
+      if (scope !== key) throw new Error("계정 또는 권한이 바뀌었습니다. 목록을 다시 열어주세요.");
+      conversationGrants.remove(sessionId, key, id);
+      return {};
+    }));
     ipcMain.handle("chat:state", wrap(async (input) => fullState(input)));
 
     ipcMain.handle("chat:tools:get", wrap(async ({ sessionId, agentId }) => {
@@ -1416,6 +1471,7 @@ function createChatFeature(options) {
         room.stopAllSilently();
       } catch {}
     }
+    progressHistory?.close();
     const release = () => { if (!options.store) store?.close(); };
     if (!pendingProcesses.size) { release(); return Promise.resolve(); }
     return Promise.allSettled([...pendingProcesses]).then(release);

@@ -76,4 +76,23 @@ for (const providerId of ["codex", "claude"]) test(`chat IPC answers a live ${pr
     assert.equal(finished.session.messages.at(-1).text, effect === "allow" ? "allowed" : "denied");
   }
   assert.equal(calls.length, 4);
+  const initial = await invoke("chat:tools:get", { sessionId: session.id, agentId: providerId });
+  await invoke("chat:tools:save", { sessionId: session.id, agentId: providerId, revision: initial.revision, settings: { ...initial.settings, rules: [] } });
+  await invoke("chat:send", { sessionId: session.id, text: `@${providerId} remember` });
+  const pending = await until(data => data.session.pendingCallApprovals.length === 1);
+  const approval = pending.session.pendingCallApprovals[0];
+  assert.match(approval.conversationLabel, /같은 명령/);
+  assert.equal((await invoke("chat:approval:respond", { sessionId: session.id, approvalId: approval.approvalId, decision: "approve-conversation" })).ok, true);
+  await until(data => !data.session.turnState.current);
+  const grants = await invoke("chat:grants:list", { sessionId: session.id, agentId: providerId });
+  assert.equal(grants.grants.length, 1);
+  await invoke("chat:send", { sessionId: session.id, text: `@${providerId} repeat` });
+  await until(data => !data.session.turnState.current && calls.length === 6);
+  assert.equal((await state()).session.pendingCallApprovals.length, 0);
+  assert.equal((await invoke("chat:grants:remove", { sessionId: session.id, agentId: providerId, id: grants.grants[0].id, scope: "stale" })).ok, false);
+  assert.equal((await invoke("chat:grants:remove", { sessionId: session.id, agentId: providerId, id: grants.grants[0].id, scope: grants.scope })).ok, true);
+  await invoke("chat:send", { sessionId: session.id, text: `@${providerId} after revoke` });
+  const again = await until(data => data.session.pendingCallApprovals.length === 1);
+  await invoke("chat:approval:respond", { sessionId: session.id, approvalId: again.session.pendingCallApprovals[0].approvalId, decision: "deny" });
+  await until(data => !data.session.turnState.current);
 });

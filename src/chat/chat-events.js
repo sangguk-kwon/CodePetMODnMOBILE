@@ -197,14 +197,18 @@ function nativeSessionId(providerId, event) {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
 }
 
-function createLineParser(providerId, onTrace = null, onNativeSession = null, onAppliedModel = null) {
+function createLineParser(providerId, onTrace = null, onNativeSession = null, onAppliedModel = null, onProgress = null) {
   const parser = { claude: parseClaudeLine, codex: parseCodexLine, agy: parseAgyLine, grok: parseGrokLine }[providerId];
   if (!parser) return null;
-  if (typeof onTrace !== "function" && typeof onNativeSession !== "function" && typeof onAppliedModel !== "function") return parser;
+  if (typeof onTrace !== "function" && typeof onNativeSession !== "function" && typeof onAppliedModel !== "function" && typeof onProgress !== "function") return parser;
   const { traceEvents } = require("./chat-trace-events");
   const pending = new Set();
   const tracedParser = (line) => {
     const parsed = parseJsonLine(line);
+    if (typeof onProgress === "function") {
+      try { for (const event of require("./chat-progress").progressEvents(providerId, parsed)) onProgress(event); }
+      catch { /* Optional progress must not interrupt CLI output or native session linking. */ }
+    }
     // Only this turn's main Claude messages report an applied model. modelUsage
     // is cumulative across resumed turns; child-agent models do not describe this run.
     if (providerId === "claude" && !parsed?.parent_tool_use_id && typeof onAppliedModel === "function") {

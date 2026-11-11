@@ -1,5 +1,23 @@
 # Release notes / 릴리즈 노트
 
+## 1.2.8 — 2026-11-11
+
+### English
+
+- Add conversation approval choices beside the one-call button. Capture the same command or individual workspace file change without manual rule entry; view and revoke grants in participant settings. Grants persist for the same conversation/account/workspace/permission scope across app restarts.
+- Add observable progress history for Claude and Codex: tool lifecycle, test-command exit codes, approval waits, elapsed time, folding and reload/cancellation recovery. Unknown results remain unknown; no additional model call or prompt is added.
+- Separate Codex automatic approval from its execution environment. Automatic execution can retain workspace-write restrictions; legacy full-access settings keep their previous meaning until explicitly changed.
+- Verified with automated tests, native CLIs connected to local mock providers, Electron UI and Windows packaging checks. Actual subscription-model flows and long-running user work remain unverified; Claude's UI review remains pending.
+- Published from unmerged PR #20 so the user can inspect the app through its update button before merging.
+
+### 한국어
+
+- 승인 버튼 옆 ▼에서 같은 명령·작업공간의 개별 파일 변경을 이 대화에 허용할 수 있습니다. 직접 규칙을 입력하지 않아도 되며 참가자 설정에서 보고 취소합니다. 같은 대화·계정·작업공간·권한 범위에서 앱 재시작 후에도 유지됩니다.
+- Claude·Codex 공통 진행 이력에 실제 도구 시작/종료·테스트 명령 종료 코드·승인 대기·경과시간을 표시합니다. 접기/펼치기·새로고침/취소 복원을 지원하고, 확인되지 않은 결과를 성공으로 표시하지 않습니다. 추가 모델 호출이나 프롬프트 삽입은 없습니다.
+- Codex 자동 승인과 실행 환경을 분리해 자동 실행에서도 작업공간 쓰기 제한을 유지할 수 있습니다. 예전 제한 없는 설정은 명시적으로 바꾸기 전까지 그대로 보존합니다.
+- 자동 테스트·설치된 CLI와 로컬 모의 공급자·Electron UI·Windows 패키지로 검증했습니다. 실제 구독 모델과 장시간 사용자 작업은 미검증이며 Claude UI 검토도 계속 이월합니다.
+- 사용자가 업데이트 후 확인하고 병합하도록 미병합 PR #20에서 게시합니다.
+
 ## 1.2.7 — 2026-11-11
 
 ### English

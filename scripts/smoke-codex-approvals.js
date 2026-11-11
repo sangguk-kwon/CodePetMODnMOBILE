@@ -11,7 +11,7 @@ const { ToolSettingsStore, settingsCapabilities, evaluateApproval, defaults } = 
 
 const root = path.resolve("artifacts", "codex-approval-smoke", String(Date.now()));
 fs.mkdirSync(root, { recursive: true });
-const report = { root, fixtureProvider: true, approvals: [], turns: [] };
+const report = { root, fixtureProvider: true, approvals: [], turns: [], progress: [] };
 function sendResponse(res, output) {
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
   const event = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
@@ -75,7 +75,8 @@ async function main() {
           return rpc;
         },
         prompt: "Local fixture test", model: "gpt-6.1-sol", timeoutMs: 45000,
-        parseLine: createLineParser("codex", null, id => { observedThread = id; if (approved) resumedThread = id; }), requestApproval: async approval => {
+        parseLine: createLineParser("codex", null, id => { observedThread = id; if (approved) resumedThread = id; }, null,
+          event => report.progress.push(event)), requestApproval: async approval => {
           observedTarget = approval.target;
           report.approvals.push({ approved, summary: approval.summary });
           return approved;
@@ -129,6 +130,8 @@ async function main() {
       assert.equal(fs.existsSync(destination), false, "restricted auto must not execute escalated tools");
       assert.match(JSON.stringify(report.toolOutputs), /never|not allowed|reject|escalat|denied/i);
     }
+    assert.ok(report.progress.some(event => event.state === "running"));
+    assert.ok(report.progress.some(event => ["completed", "denied", "failed"].includes(event.state)));
     report.ok = true;
     console.log(`PASS actual Codex accept/decline using local fixture; report: ${root}`);
   } finally {

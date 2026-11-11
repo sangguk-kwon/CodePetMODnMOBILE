@@ -35,3 +35,19 @@ test("settings changes, cancellation and expiry deny only their own requests", a
   approvals.close();
   assert.equal(await last, false);
 });
+
+test("conversation approval is offered only with a save callback and never executes after a failed save", async () => {
+  const broker = new CallApprovals({ emit() {} }); let saved = false;
+  const promise = broker.request({ sessionId: "s", conversationLabel: "same command", onConversation: () => {
+    if (!saved) throw Error("disk failure");
+  } });
+  const request = broker.list("s")[0];
+  assert.equal(request.conversationLabel, "same command");
+  assert.throws(() => broker.respond("s", request.approvalId, "approve-conversation"), /disk failure/);
+  assert.equal(broker.list("s").length, 1);
+  saved = true; assert.ok(broker.respond("s", request.approvalId, "approve-conversation"));
+  assert.equal(await promise, true);
+  const once = broker.request({ sessionId: "s" }), id = broker.list("s")[0].approvalId;
+  assert.equal(broker.respond("s", id, "approve-conversation"), false);
+  broker.close(); assert.equal(await once, false);
+});

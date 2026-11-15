@@ -1524,6 +1524,7 @@ function refreshMessageLabels() {
 function renderMessage(message) {
   const item = document.createElement("li");
   item.className = "message";
+  if (message.messageKind === "commentary") item.classList.add("is-commentary");
   if (message.id) item.dataset.messageId = message.id;
 
   if (message.authorType === "system") {
@@ -1668,7 +1669,7 @@ function renderMessage(message) {
   }
 
   body.append(meta, bubble);
-  if (message.runId) {
+  if (message.runId && message.messageKind !== "commentary") {
     item.dataset.runId = message.runId;
     const snapshot = progressSnapshots.get(message.runId);
     if (snapshot) {
@@ -1688,6 +1689,17 @@ function renderMessage(message) {
 function appendMessage(message) {
   if (message.id && displayedMessageIds.has(message.id)) return;
   const stick = isNearBottom();
+  if (message.messageKind === "commentary") {
+    const live = liveRuns.get(message.runId);
+    // Keep the live working indicator below each published report. Never turn
+    // a progress @mention into a new agent invocation or a final result.
+    if (live) resetLiveText(live);
+    messageList.append(renderMessage(message));
+    if (live) { live.statusEl.textContent = "작업 중…"; messageList.append(live.item); }
+    if (message.id) displayedMessageIds.add(message.id);
+    scrollToBottom(stick);
+    return;
+  }
   // 같은 runId의 라이브 초안이 있으면 정식 메시지로 대체합니다.
   if (message.runId && liveRuns.has(message.runId)) {
     const live = liveRuns.get(message.runId);
@@ -1774,6 +1786,11 @@ function cancelLiveUpdate() {
   liveTimer = null;
 }
 
+function resetLiveText(live, text = "") {
+  live.text = text; live.textNode.data = text; live.renderedLength = text.length;
+  live.dirty = false; live.resetText = false;
+}
+
 function scheduleLiveUpdate() {
   if (liveFrame !== null || liveTimer !== null) return;
   liveTimer = setTimeout(() => {
@@ -1815,6 +1832,11 @@ function handleRunEvent(payload) {
     if (!panel) { panel = chatProgress.createPanel(snapshot); item.querySelector(".bubble").append(panel.element); progressPanels.set(item, panel); }
     else panel.update(snapshot);
     const live = liveRuns.get(runId); if (live) live.progressPanel = panel;
+    if (live && snapshot.state === "running") {
+      const row = snapshot.rows.at(-1);
+      const labels = { read: "파일 조회 중", search: "파일 검색 중", edit: "파일 수정 중", test: "테스트 실행 중", command: "명령 실행 중", thinking: "생각 중", waiting: "승인 대기 중", tool: "도구 실행 중", web: "웹 도구 실행 중" };
+      live.statusEl.textContent = row?.state === "running" ? labels[row.category] || "작업 중…" : "작업 중…";
+    }
     return;
   }
 
@@ -1856,7 +1878,11 @@ function handleRunEvent(payload) {
 
   const live = liveRuns.get(runId);
   if (!live) return;
-  if (kind === "status") {
+  if (kind === "public-reset") {
+    resetLiveText(live); live.statusEl.textContent = "생각 중…";
+  } else if (kind === "public-text") {
+    resetLiveText(live, payload.text || ""); live.statusEl.textContent = "";
+  } else if (kind === "status") {
     live.statusEl.textContent = payload.label || "";
   } else if (kind === "delta") {
     live.text += payload.text || "";
@@ -1868,6 +1894,7 @@ function handleRunEvent(payload) {
     live.dirty = true;
     scheduleLiveUpdate();
   } else if (kind === "run-end") {
+    live.statusEl.textContent = payload.cancelled ? "작업 중단됨" : payload.ok ? "응답 완료" : "작업 실패";
     // 정식 메시지가 곧 도착하므로 초안은 짧게 유지하되, 실패 시 즉시 제거합니다.
     if (!payload.ok && !live.progressPanel) {
       live.item.remove();

@@ -18,7 +18,7 @@ window.chatProgress = {
     function update(next) {
       if (data && next.sequence <= data.sequence) return;
       data = next; list.replaceChildren();
-      summary.textContent = `진행 이력 · ${data.state === "completed" ? "작업 응답 완료" : states[data.state] || "결과 미확인"} · ${data.rows.length}건`;
+      summary.textContent = `도구 실행 기록 · ${data.state === "completed" ? "작업 응답 완료" : states[data.state] || "결과 미확인"} · ${data.rows.length}건`;
       for (const row of data.rows) {
         const item = document.createElement("li");
         item.dataset.state = row.state;
@@ -30,7 +30,7 @@ window.chatProgress = {
       omitted.hidden = !data.omitted;
       tick();
     }
-    update(initial); element.open = initial.state === "running";
+    update(initial); element.open = false;
     return { element, update, tick };
   },
 };

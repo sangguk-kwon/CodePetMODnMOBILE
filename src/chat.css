@@ -1547,6 +1547,10 @@ textarea:focus-visible {
   display: none;
 }
 
+/* CLAUDE-UI-REVIEW: public reports stay in the normal conversation; the
+   technical tool history is optional and collapsed. Freely review this layout. */
+.message.is-commentary .bubble { border-left: 3px solid var(--agent-color, var(--muted)); }
+
 /* --- 첨부 --- */
 .icon-button {
   flex: none;

@@ -1,5 +1,21 @@
 # Release notes / 릴리즈 노트
 
+## 1.2.9 — 2026-11-11
+
+### English
+
+- Show public intermediate assistant messages directly in the conversation for Claude and Codex, followed by the next working state and a separate final answer. Preserve reports on reload without repeating them in later prompts or triggering agent handoffs.
+- Keep technical tool records available in a collapsed section. Exclude private reasoning, child-agent text and tool output from public reports; do not generate missing updates or add model calls.
+- Verify with automated tests, Electron UI and installed CLIs connected to local mock providers. Real subscription-model reporting frequency, long tasks and Claude's deferred UI review remain unverified.
+- Publish the fork PR branch for app inspection before the user merges it.
+
+### 한국어
+
+- Claude·Codex의 공개 중간 설명을 채팅에 순서대로 남기고 그 사이의 작업 상태와 마지막 답변을 따로 표시합니다. 다시 열어도 설명이 남으며 후속 프롬프트나 다른 에이전트 호출에 중복 사용하지 않습니다.
+- 도구 실행 기록은 기본 접힌 상태로 보조 표시합니다. 내부 추론·하위 에이전트·도구 출력을 중간 설명으로 쓰지 않고, 없는 설명을 만들거나 모델 호출을 추가하지 않습니다.
+- 자동 테스트·Electron UI·설치된 CLI와 로컬 모의 공급자로 검증했습니다. 실제 구독 모델의 설명 빈도·장시간 작업과 Claude UI 검토는 후속입니다.
+- 사용자가 앱을 확인한 뒤 병합할 수 있도록 포크 PR 브랜치에서 배포합니다.
+
 ## 1.2.8 — 2026-11-11
 
 ### English

@@ -88,7 +88,7 @@ function readMessageRange(file, { afterId, throughId, agentId }) {
       if (!within) continue;
       if (message.id === afterId) return messages.reverse();
       // This participant's own answers already live in the native session.
-      if (message.authorType !== "system" && !message.error &&
+      if (message.authorType !== "system" && !message.error && message.messageKind !== "commentary" &&
           !(message.authorType === "agent" && message.author === agentId)) messages.push(message);
     }
     return null; // An anchor was removed: never silently skip missing context.
@@ -112,7 +112,7 @@ function readRecoveryContext(file, { throughId, maxBytes = RECOVERY_CONTEXT_BYTE
       const message = event?.kind === "message" ? event.message : null;
       if (!message) continue;
       if (message.id === throughId) within = true;
-      if (!within || message.authorType === "system" || message.error) continue;
+      if (!within || message.authorType === "system" || message.error || message.messageKind === "commentary") continue;
       const size = Buffer.byteLength(JSON.stringify(message), "utf8") + 1;
       if (bytes + size > maxBytes) {
         // Preserve the beginning of an oversized latest request rather than

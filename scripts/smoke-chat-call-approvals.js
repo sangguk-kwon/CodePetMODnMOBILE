@@ -22,6 +22,10 @@ adapter[providerId === "claude" ? "runClaudeApprovalTurn" : "runCodexApprovalTur
   input.parseLine(JSON.stringify(providerId === "claude" ? { type: "system", subtype: "init", session_id: "11111111-2222-4333-8444-555555555555" }
     : { type: "thread.started", thread_id: "11111111-2222-4333-8444-555555555555" }));
   const toolId = `tool-${runs}`;
+  const reportText = text => input.parseLine(JSON.stringify(providerId === "claude"
+    ? { type: "assistant", message: { id: `message-${runs}-${text}`, content: [{ type: "text", text }] } }
+    : { type: "item.completed", item: { type: "agent_message", id: `message-${runs}-${text}`, phase: "commentary", text } }));
+  reportText("Checking the related files.");
   input.parseLine(JSON.stringify(providerId === "claude" ? { type: "assistant", message: { content: [{ type: "tool_use", id: toolId, name: "Read", input: { file_path: "SECRET_PROGRESS_PATH" } }] } }
     : { type: "item.started", item: { type: "command_execution", id: toolId, command: "npm test" } }));
   return { promise: input.requestApproval({ summary: "명령 실행 승인", detail: "echo fixture", signal: controller.signal,
@@ -29,6 +33,10 @@ adapter[providerId === "claude" ? "runClaudeApprovalTurn" : "runCodexApprovalTur
       if (controller.signal.aborted) return { ok: false, cancelled: true };
       input.parseLine(JSON.stringify(providerId === "claude" ? { type: "user", message: { content: [{ type: "tool_result", tool_use_id: toolId, is_error: !approved, content: "SECRET_PROGRESS_OUTPUT" }] } }
         : { type: "item.completed", item: { type: "command_execution", id: toolId, command: "npm test", exit_code: approved ? 0 : 1, aggregated_output: "SECRET_PROGRESS_OUTPUT" } }));
+      reportText("The tool finished; preparing the result.");
+      input.parseLine(JSON.stringify(providerId === "claude"
+        ? { type: "assistant", message: { id: `final-${runs}`, content: [{ type: "text", text: approved ? "Allowed fixture" : "Denied fixture" }] } }
+        : { type: "item.completed", item: { id: `final-${runs}`, type: "agent_message", phase: "final_answer", text: approved ? "Allowed fixture" : "Denied fixture" } }));
       return { ok: true, text: approved ? "Allowed fixture" : "Denied fixture" };
     }),
   cancel: () => controller.abort() };
@@ -56,6 +64,9 @@ async function main() {
     await js("localStorage.setItem(DOCTOR_SEEN_KEY, 'true'); doctorBackdrop.hidden = true");
     const send = async () => { await js(`window.chatApi.send(activeSessionId, '@${providerId} fixture', [])`); await until(() => js("!approvalBackdrop.hidden")); };
     await send();
+    assert.equal(await js("document.querySelectorAll('.is-commentary').length"), 1);
+    assert.equal(await js("Array.from(document.querySelectorAll('.progress-history')).some(e=>e.open)"), false);
+    assert.match(await js("Array.from(document.querySelectorAll('.is-live .live-status')).at(-1).textContent"), /대기|작업/);
     assert.equal(await js("approvalApprove.textContent"), "이번 요청 허용");
     assert.match(await js("document.querySelector('.approval-warning').textContent"), /같은 실행/);
     await pause(150);
@@ -65,6 +76,10 @@ async function main() {
     await js("approvalApprove.click(); approvalApprove.click()");
     await until(() => js("messageList.textContent.includes('Allowed fixture')"));
     assert.equal(runs, 1);
+    assert.equal(await js("document.querySelectorAll('.is-commentary').length"), 2);
+    assert.equal(await js("Array.from(document.querySelectorAll('.message:not(.is-commentary)')).filter(e=>e.textContent.includes('Allowed fixture')).length"), 1);
+    await pause(180);
+    fs.writeFileSync(path.join(output, "sequential-messages.png"), (await win.webContents.capturePage()).toPNG());
     await send(); await js("approvalDeny.click()");
     await until(() => js("messageList.textContent.includes('Denied fixture')"));
     assert.equal(runs, 2);
@@ -104,6 +119,7 @@ async function main() {
     await until(async () => (await js("!turnState.current && approvalBackdrop.hidden && liveRuns.size===0")) && runs === 6);
     assert.equal(runs, 6);
     assert.equal(await js("messageList.textContent.includes('SECRET_PROGRESS')"), false);
+    assert.ok(await js("document.querySelectorAll('.is-commentary').length > 0"), "reports persist after renderer reload");
     assert.ok(await js("document.querySelectorAll('.progress-history').length > 0"));
     await js("Array.from(document.querySelectorAll('.progress-history')).at(-1).open=true");
     assert.match(await js("Array.from(document.querySelectorAll('.progress-history')).at(-1).textContent"), /완료/);

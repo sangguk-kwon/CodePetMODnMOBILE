@@ -4,6 +4,7 @@ const path = require("node:path");
 const http = require("node:http");
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
+const { randomUUID } = require("node:crypto");
 const { runCodexApprovalTurn } = require("../src/chat/codex-approval-runner");
 const { createLineParser } = require("../src/chat/chat-events");
 const { resolveCodexCommand, CodexLiveRpc } = require("../src/live/codex-live-rpc");
@@ -11,15 +12,18 @@ const { ToolSettingsStore, settingsCapabilities, evaluateApproval, defaults } = 
 
 const root = path.resolve("artifacts", "codex-approval-smoke", String(Date.now()));
 fs.mkdirSync(root, { recursive: true });
-const report = { root, fixtureProvider: true, approvals: [], turns: [], progress: [] };
+const report = { root, fixtureProvider: true, approvals: [], turns: [], progress: [], publicMessages: [] };
 function sendResponse(res, output) {
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
   const event = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
   event("response.created", { response: { id: "response-fixture", status: "in_progress", output: [] } });
-  event("response.output_item.added", { output_index: 0, item: output });
-  if (output.type === "message") event("response.output_text.delta", { output_index: 0, content_index: 0, item_id: output.id, delta: output.content[0].text });
-  event("response.output_item.done", { output_index: 0, item: output });
-  event("response.completed", { response: { id: "response-fixture", status: "completed", output: [output], usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } } });
+  const outputs = output.type !== "message" ? [{ type: "message", id: "report-fixture", role: "assistant", phase: "commentary", content: [{ type: "output_text", text: "Checking the fixture before running the tool.", annotations: [] }] }, output] : [output];
+  outputs.forEach((item, index) => {
+    event("response.output_item.added", { output_index: index, item });
+    if (item.type === "message") event("response.output_text.delta", { output_index: index, content_index: 0, item_id: item.id, delta: item.content[0].text });
+    event("response.output_item.done", { output_index: index, item });
+  });
+  event("response.completed", { response: { id: "response-fixture", status: "completed", output: outputs, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } } });
   res.end();
 }
 async function main() {
@@ -39,10 +43,11 @@ async function main() {
       const args = tool.name === "exec_command" ? { cmd, sandbox_permissions: "require_escalated", justification: "CodePet local approval smoke" }
         : tool.name === "shell_command" ? { command: cmd, sandbox_permissions: "require_escalated", justification: "CodePet local approval smoke" }
           : { command: ["powershell.exe", "-NoProfile", "-Command", cmd], sandbox_permissions: "require_escalated", justification: "CodePet local approval smoke" };
+      const callId = `call-${randomUUID()}`, itemId = `fc-${randomUUID()}`;
       sendResponse(res, tool.name === "exec"
-        ? { type: "custom_tool_call", id: "fc-fixture", call_id: "call-fixture", namespace: "functions", name: "exec",
+        ? { type: "custom_tool_call", id: itemId, call_id: callId, namespace: "functions", name: "exec",
           input: `text(await tools.exec_command(${JSON.stringify({ cmd, sandbox_permissions: "require_escalated", justification: "CodePet local approval smoke" })}));` }
-        : { type: "function_call", id: "fc-fixture", call_id: "call-fixture", name: tool.name, arguments: JSON.stringify(args) });
+        : { type: "function_call", id: itemId, call_id: callId, name: tool.name, arguments: JSON.stringify(args) });
     } else {
       report.toolOutputs = (body.input || []).filter(item => /call_output/.test(item.type))
         .map(item => (typeof item.output === "string" ? item.output : JSON.stringify(item.output)).slice(-2000));
@@ -76,7 +81,7 @@ async function main() {
         },
         prompt: "Local fixture test", model: "gpt-6.1-sol", timeoutMs: 45000,
         parseLine: createLineParser("codex", null, id => { observedThread = id; if (approved) resumedThread = id; }, null,
-          event => report.progress.push(event)), requestApproval: async approval => {
+          event => report.progress.push(event), event => report.publicMessages.push(event)), requestApproval: async approval => {
           observedTarget = approval.target;
           report.approvals.push({ approved, summary: approval.summary });
           return approved;
@@ -97,7 +102,10 @@ async function main() {
         if (fs.existsSync(destination)) fs.unlinkSync(destination);
         first = true;
         let decisions = 0;
-        const ruled = await runCodexApprovalTurn({ ...base, cliSessionId: observedThread, prompt: "Repeat local rule fixture",
+        // A declined native turn may leave cancelled tool continuations in its
+        // thread. Test persisted deny rules in a fresh thread; resume is tested
+        // independently below using the successfully completed thread.
+        const ruled = await runCodexApprovalTurn({ ...base, cliSessionId: approved ? observedThread : undefined, prompt: "Repeat local rule fixture",
           parseLine: createLineParser("codex"), requestApproval: async approval => {
             const decision = evaluateApproval(new ToolSettingsStore({ root: dir }).get(key).settings, approval.target, cwd);
             assert.equal(decision?.effect, approved ? "allow" : "deny", "real CLI target must match persisted exact rule");
@@ -132,6 +140,8 @@ async function main() {
     }
     assert.ok(report.progress.some(event => event.state === "running"));
     assert.ok(report.progress.some(event => ["completed", "denied", "failed"].includes(event.state)));
+    assert.ok(report.publicMessages.some(event => event.phase === "commentary" && event.text === "Checking the fixture before running the tool."));
+    assert.ok(report.publicMessages.some(event => event.phase === "final_answer" && event.text === "Local approval fixture finished."));
     report.ok = true;
     console.log(`PASS actual Codex accept/decline using local fixture; report: ${root}`);
   } finally {
